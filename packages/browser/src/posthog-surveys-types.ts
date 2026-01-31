@@ -58,6 +58,7 @@ interface SurveyQuestionBase {
     buttonText?: string
     branching?: NextQuestionBranching | EndBranching | ResponseBasedBranching | SpecificQuestionBranching
     validation?: SurveyValidationRule[]
+    translations?: Record<string, SurveyQuestionTranslation>
 }
 
 export interface BasicSurveyQuestion extends SurveyQuestionBase {
@@ -124,12 +125,33 @@ export interface SurveyElement {
 // Re-export from @posthog/types to avoid duplication
 export type { SurveyRenderReason } from '@posthog/types'
 
+export interface SurveyTranslation {
+    name?: string
+    description?: string
+    thankYouMessageHeader?: string
+    thankYouMessageDescription?: string
+    thankYouMessageCloseButtonText?: string
+}
+
+export interface SurveyQuestionTranslation {
+    question?: string
+    description?: string
+    buttonText?: string
+    link?: string
+    // For rating questions
+    lowerBoundLabel?: string
+    upperBoundLabel?: string
+    // For multiple choice questions
+    choices?: string[]
+}
+
 export interface Survey {
     // Sync this with the backend's SurveyAPISerializer!
     id: string
     name: string
     description: string
     type: SurveyType
+    translations?: Record<string, SurveyTranslation>
     feature_flag_keys:
         | {
               key: string
