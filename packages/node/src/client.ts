@@ -1,7 +1,6 @@
 import { version } from './version'
 
 import {
-  FeatureFlagDetail,
   FeatureFlagValue,
   isBlockedUA,
   isPlainObject,
@@ -26,9 +25,12 @@ import {
   OverrideFeatureFlagsOptions,
   PostHogOptions,
   SendFeatureFlagsOptions,
+  FlagEvaluationOptions,
+  AllFlagsOptions,
 } from './types'
 import {
   FeatureFlagsPoller,
+  type FeatureFlagEvaluationContext,
   RequiresServerEvaluation,
   InconclusiveMatchError,
 } from './extensions/feature-flags/feature-flags'
@@ -43,6 +45,9 @@ import { ContextData, ContextOptions, IPostHogContext } from './extensions/conte
 const MINIMUM_POLLING_INTERVAL = 100
 const THIRTY_SECONDS = 30 * 1000
 const MAX_CACHE_SIZE = 50 * 1000
+
+const WAITUNTIL_DEBOUNCE_MS = 50
+const WAITUNTIL_MAX_WAIT_MS = 500
 
 // The actual exported Nodejs API.
 export abstract class PostHogBackendClient extends PostHogCoreStateless implements IPostHog {
@@ -59,6 +64,13 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
   private _payloadOverrides?: Record<string, JsonType>
 
   distinctIdHasSentFlagCalls: Record<string, string[]>
+
+  // waitUntil debounce state (per-instance)
+  private _waitUntilCycle?: {
+    resolve: () => void
+    startedAt: number
+    timer: ReturnType<typeof setTimeout> | undefined
+  }
 
   /**
    * Initialize a new PostHog client instance.
@@ -100,6 +112,13 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
         ? Math.max(options.featureFlagsPollingInterval, MINIMUM_POLLING_INTERVAL)
         : THIRTY_SECONDS
 
+    if (typeof options.waitUntilDebounceMs === 'number') {
+      this.options.waitUntilDebounceMs = Math.max(options.waitUntilDebounceMs, 0)
+    }
+    if (typeof options.waitUntilMaxWaitMs === 'number') {
+      this.options.waitUntilMaxWaitMs = Math.max(options.waitUntilMaxWaitMs, 0)
+    }
+
     if (options.personalApiKey) {
       if (options.personalApiKey.includes('phc_')) {
         throw new Error(
@@ -134,6 +153,93 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
     this.errorTracking = new ErrorTracking(this, options, this._logger)
     this.distinctIdHasSentFlagCalls = {}
     this.maxCacheSize = options.maxCacheSize || MAX_CACHE_SIZE
+  }
+
+  protected override enqueue(type: string, message: any, options?: PostHogCaptureOptions): void {
+    super.enqueue(type, message, options)
+    this.scheduleDebouncedFlush()
+  }
+
+  override async flush(): Promise<void> {
+    const flushPromise = super.flush()
+    const waitUntil = this.options.waitUntil
+    // Only register when no debounce promise is already keeping runtime alive
+    if (waitUntil && !this._waitUntilCycle) {
+      try {
+        waitUntil(flushPromise.catch(() => {}))
+      } catch {
+        // waitUntil may throw outside request context
+      }
+    }
+    return flushPromise
+  }
+
+  private scheduleDebouncedFlush(): void {
+    // `waitUntil` is a serverless construct
+    // if it doesn't exist, we can skip all the debounce logic and flush as normal
+    const waitUntil = this.options.waitUntil
+    if (!waitUntil) {
+      return
+    }
+
+    if (this.disabled || this.optedOut) {
+      return
+    }
+
+    if (!this._waitUntilCycle) {
+      let resolve: () => void
+      const promise = new Promise<void>((r) => {
+        resolve = r
+      })
+      try {
+        waitUntil(promise)
+      } catch {
+        // waitUntil may throw outside request context
+        return
+      }
+      this._waitUntilCycle = { resolve: resolve!, startedAt: Date.now(), timer: undefined }
+    }
+
+    // Max time cap: if we've been debouncing too long, flush now to prevent
+    // starvation from rapid concurrent captures. I.e., don't let a steady
+    // stream of captures keep pushing the flush back indefinitely.
+    const elapsed = Date.now() - this._waitUntilCycle.startedAt
+    const maxWaitMs = this.options.waitUntilMaxWaitMs ?? WAITUNTIL_MAX_WAIT_MS
+    const flushNow = elapsed >= maxWaitMs
+
+    if (this._waitUntilCycle.timer !== undefined) {
+      clearTimeout(this._waitUntilCycle.timer)
+    }
+
+    if (flushNow) {
+      void this.resolveWaitUntilFlush()
+      return
+    }
+
+    const debounceMs = this.options.waitUntilDebounceMs ?? WAITUNTIL_DEBOUNCE_MS
+    this._waitUntilCycle.timer = safeSetTimeout(() => {
+      void this.resolveWaitUntilFlush()
+    }, debounceMs)
+  }
+
+  private _consumeWaitUntilCycle(): (() => void) | undefined {
+    const cycle = this._waitUntilCycle
+    if (cycle) {
+      clearTimeout(cycle.timer)
+      this._waitUntilCycle = undefined
+    }
+    return cycle?.resolve
+  }
+
+  private async resolveWaitUntilFlush(): Promise<void> {
+    const resolve = this._consumeWaitUntilCycle()
+    try {
+      await super.flush()
+    } catch {
+      // Flush errors are already logged by flush() internals
+    } finally {
+      resolve?.()
+    }
   }
 
   /**
@@ -327,6 +433,11 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
     if (typeof props === 'string') {
       this._logger.warn('Called capture() with a string as the first argument when an object was expected.')
     }
+    if (props.event === '$exception' && !props._originatedFromCaptureException) {
+      this._logger.warn(
+        "Using `posthog.capture('$exception')` is unreliable because it does not attach required metadata. Use `posthog.captureException(error)` instead, which attaches required metadata automatically."
+      )
+    }
     this.addPendingPromise(
       this.prepareEventMessage(props)
         .then(({ distinctId, event, properties, options }) => {
@@ -390,6 +501,11 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
   async captureImmediate(props: EventMessage): Promise<void> {
     if (typeof props === 'string') {
       this._logger.warn('Called captureImmediate() with a string as the first argument when an object was expected.')
+    }
+    if (props.event === '$exception' && !props._originatedFromCaptureException) {
+      this._logger.warn(
+        "Capturing a `$exception` event via `posthog.captureImmediate('$exception')` is unreliable because it does not attach required metadata. Use `posthog.captureExceptionImmediate(error)` instead, which attaches this metadata by default."
+      )
     }
     return this.addPendingPromise(
       this.prepareEventMessage(props)
@@ -601,6 +717,16 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
     })
   }
 
+  private _resolveDistinctId<T>(
+    distinctIdOrOptions: string | T | undefined,
+    options: T | undefined
+  ): { distinctId: string | undefined; options: T | undefined } {
+    if (typeof distinctIdOrOptions === 'string') {
+      return { distinctId: distinctIdOrOptions, options }
+    }
+    return { distinctId: this.context?.get()?.distinctId, options: distinctIdOrOptions }
+  }
+
   /**
    * Internal method that handles feature flag evaluation with full details.
    * Used by getFeatureFlag, getFeatureFlagPayload, and getFeatureFlagResult.
@@ -653,6 +779,12 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
 
     personProperties = adjustedProperties.allPersonProperties
     groupProperties = adjustedProperties.allGroupProperties
+    const evaluationContext = this.createFeatureFlagEvaluationContext(
+      distinctId,
+      groups,
+      personProperties,
+      groupProperties
+    )
 
     // set defaults
     if (onlyEvaluateLocally == undefined) {
@@ -677,14 +809,9 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
       const flag = this.featureFlagsPoller?.featureFlagsByKey[key]
       if (flag) {
         try {
-          const localResult = await this.featureFlagsPoller?.computeFlagAndPayloadLocally(
-            flag,
-            distinctId,
-            groups,
-            personProperties,
-            groupProperties,
-            matchValue
-          )
+          const localResult = await this.featureFlagsPoller?.computeFlagAndPayloadLocally(flag, evaluationContext, {
+            matchValue,
+          })
           if (localResult) {
             flagWasLocallyEvaluated = true
             const value = localResult.value
@@ -711,10 +838,10 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
     // Fall back to remote evaluation if needed
     if (!flagWasLocallyEvaluated && !onlyEvaluateLocally) {
       const flagsResponse = await super.getFeatureFlagDetailsStateless(
-        distinctId,
-        groups,
-        personProperties,
-        groupProperties,
+        evaluationContext.distinctId,
+        evaluationContext.groups,
+        evaluationContext.personProperties,
+        evaluationContext.groupProperties,
         disableGeoip,
         [key]
       )
@@ -798,7 +925,16 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
           locally_evaluated: flagWasLocallyEvaluated,
           [`$feature/${key}`]: response,
           $feature_flag_request_id: requestId,
-          $feature_flag_evaluated_at: evaluatedAt,
+          $feature_flag_evaluated_at: flagWasLocallyEvaluated ? Date.now() : evaluatedAt,
+        }
+
+        // Add local evaluation definition load timestamp
+        if (flagWasLocallyEvaluated && this.featureFlagsPoller) {
+          const flagDefinitionsLoadedAt = this.featureFlagsPoller.getFlagDefinitionsLoadedAt()
+
+          if (flagDefinitionsLoadedAt !== undefined) {
+            properties.$feature_flag_definitions_loaded_at = flagDefinitionsLoadedAt
+          }
         }
 
         if (featureFlagError) {
@@ -998,21 +1134,30 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
    * @param options - Optional configuration for flag evaluation
    * @returns Promise that resolves to the flag result or undefined
    */
+  async getFeatureFlagResult(key: string, options?: FlagEvaluationOptions): Promise<FeatureFlagResult | undefined>
   async getFeatureFlagResult(
     key: string,
     distinctId: string,
-    options?: {
-      groups?: Record<string, string>
-      personProperties?: Record<string, string>
-      groupProperties?: Record<string, Record<string, string>>
-      onlyEvaluateLocally?: boolean
-      sendFeatureFlagEvents?: boolean
-      disableGeoip?: boolean
-    }
+    options?: FlagEvaluationOptions
+  ): Promise<FeatureFlagResult | undefined>
+  async getFeatureFlagResult(
+    key: string,
+    distinctIdOrOptions?: string | FlagEvaluationOptions,
+    options?: FlagEvaluationOptions
   ): Promise<FeatureFlagResult | undefined> {
-    return this._getFeatureFlagResult(key, distinctId, {
-      ...options,
-      sendFeatureFlagEvents: options?.sendFeatureFlagEvents ?? this.options.sendFeatureFlagEvent ?? true,
+    const { distinctId: resolvedDistinctId, options: resolvedOptions } = this._resolveDistinctId(
+      distinctIdOrOptions,
+      options
+    )
+
+    if (!resolvedDistinctId) {
+      this._logger.warn('[PostHog] distinctId is required — pass it explicitly or use withContext()')
+      return undefined
+    }
+
+    return this._getFeatureFlagResult(key, resolvedDistinctId, {
+      ...resolvedOptions,
+      sendFeatureFlagEvents: resolvedOptions?.sendFeatureFlagEvents ?? this.options.sendFeatureFlagEvent ?? true,
     })
   }
 
@@ -1145,18 +1290,24 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
    * @param options - Optional configuration for flag evaluation
    * @returns Promise that resolves to a record of flag keys and their values
    */
+  async getAllFlags(options?: AllFlagsOptions): Promise<Record<string, FeatureFlagValue>>
+  async getAllFlags(distinctId: string, options?: AllFlagsOptions): Promise<Record<string, FeatureFlagValue>>
   async getAllFlags(
-    distinctId: string,
-    options?: {
-      groups?: Record<string, string>
-      personProperties?: Record<string, string>
-      groupProperties?: Record<string, Record<string, string>>
-      onlyEvaluateLocally?: boolean
-      disableGeoip?: boolean
-      flagKeys?: string[]
-    }
+    distinctIdOrOptions?: string | AllFlagsOptions,
+    options?: AllFlagsOptions
   ): Promise<Record<string, FeatureFlagValue>> {
-    const response = await this.getAllFlagsAndPayloads(distinctId, options)
+    const { distinctId: resolvedDistinctId, options: resolvedOptions } = this._resolveDistinctId(
+      distinctIdOrOptions,
+      options
+    )
+    if (!resolvedDistinctId) {
+      this._logger.warn(
+        '[PostHog] distinctId is required to get feature flags — pass it explicitly or use withContext()'
+      )
+      return {}
+    }
+
+    const response = await this.getAllFlagsAndPayloads(resolvedDistinctId, resolvedOptions)
     return response.featureFlags || {}
   }
 
@@ -1193,22 +1344,28 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
    * @param options - Optional configuration for flag evaluation
    * @returns Promise that resolves to flags and payloads
    */
+  async getAllFlagsAndPayloads(options?: AllFlagsOptions): Promise<PostHogFlagsAndPayloadsResponse>
+  async getAllFlagsAndPayloads(distinctId: string, options?: AllFlagsOptions): Promise<PostHogFlagsAndPayloadsResponse>
   async getAllFlagsAndPayloads(
-    distinctId: string,
-    options?: {
-      groups?: Record<string, string>
-      personProperties?: Record<string, string>
-      groupProperties?: Record<string, Record<string, string>>
-      onlyEvaluateLocally?: boolean
-      disableGeoip?: boolean
-      flagKeys?: string[]
-    }
+    distinctIdOrOptions?: string | AllFlagsOptions,
+    options?: AllFlagsOptions
   ): Promise<PostHogFlagsAndPayloadsResponse> {
-    const { groups, disableGeoip, flagKeys } = options || {}
-    let { onlyEvaluateLocally, personProperties, groupProperties } = options || {}
+    const { distinctId: resolvedDistinctId, options: resolvedOptions } = this._resolveDistinctId(
+      distinctIdOrOptions,
+      options
+    )
+    if (!resolvedDistinctId) {
+      this._logger.warn(
+        '[PostHog] distinctId is required to get feature flags and payloads — pass it explicitly or use withContext()'
+      )
+      return { featureFlags: {}, featureFlagPayloads: {} }
+    }
+
+    const { groups, disableGeoip, flagKeys } = resolvedOptions || {}
+    let { onlyEvaluateLocally, personProperties, groupProperties } = resolvedOptions || {}
 
     const adjustedProperties = this.addLocalPersonAndGroupProperties(
-      distinctId,
+      resolvedDistinctId,
       groups,
       personProperties,
       groupProperties
@@ -1216,19 +1373,19 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
 
     personProperties = adjustedProperties.allPersonProperties
     groupProperties = adjustedProperties.allGroupProperties
+    const evaluationContext = this.createFeatureFlagEvaluationContext(
+      resolvedDistinctId,
+      groups,
+      personProperties,
+      groupProperties
+    )
 
     // set defaults
     if (onlyEvaluateLocally == undefined) {
       onlyEvaluateLocally = this.options.strictLocalEvaluation ?? false
     }
 
-    const localEvaluationResult = await this.featureFlagsPoller?.getAllFlagsAndPayloads(
-      distinctId,
-      groups,
-      personProperties,
-      groupProperties,
-      flagKeys
-    )
+    const localEvaluationResult = await this.featureFlagsPoller?.getAllFlagsAndPayloads(evaluationContext, flagKeys)
 
     let featureFlags = {}
     let featureFlagPayloads = {}
@@ -1241,10 +1398,10 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
 
     if (fallbackToFlags && !onlyEvaluateLocally) {
       const remoteEvaluationResult = await super.getFeatureFlagsAndPayloadsStateless(
-        distinctId,
-        groups,
-        personProperties,
-        groupProperties,
+        evaluationContext.distinctId,
+        evaluationContext.groups,
+        evaluationContext.personProperties,
+        evaluationContext.groupProperties,
         disableGeoip,
         flagKeys
       )
@@ -1501,6 +1658,24 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
   }
 
   /**
+   * Set context without a callback wrapper.
+   *
+   * Uses `AsyncLocalStorage.enterWith()` to attach context to the current
+   * async execution context. The context lives until that async context ends.
+   *
+   * Must be called in the same async scope that makes PostHog calls.
+   * Calling this outside a request-scoped async context will leak context
+   * across unrelated work. Prefer `withContext()` when you can wrap code
+   * in a callback — it creates an isolated scope that cleans up automatically.
+   *
+   * @param data - Context data to apply (distinctId, sessionId, properties)
+   * @param options - Context options (fresh: true to start with clean context instead of inheriting)
+   */
+  enterContext(data: Partial<ContextData>, options?: ContextOptions): void {
+    this.context?.enter(data as ContextData, options)
+  }
+
+  /**
    * Shutdown the PostHog client gracefully.
    *
    * @example
@@ -1521,9 +1696,16 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
    * @returns Promise that resolves when shutdown is complete
    */
   async _shutdown(shutdownTimeoutMs?: number): Promise<void> {
-    this.featureFlagsPoller?.stopPoller(shutdownTimeoutMs)
+    // Cancel any pending debounced flush — shutdown will flush directly.
+    const resolve = this._consumeWaitUntilCycle()
+
+    await this.featureFlagsPoller?.stopPoller(shutdownTimeoutMs)
     this.errorTracking.shutdown()
-    return super._shutdown(shutdownTimeoutMs)
+    try {
+      return await super._shutdown(shutdownTimeoutMs)
+    } finally {
+      resolve?.()
+    }
   }
 
   private async _requestRemoteConfigPayload(flagKey: string): Promise<PostHogFetchResponse | undefined> {
@@ -1681,6 +1863,21 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
     return { allPersonProperties, allGroupProperties }
   }
 
+  private createFeatureFlagEvaluationContext(
+    distinctId: string,
+    groups?: Record<string, string>,
+    personProperties?: Record<string, any>,
+    groupProperties?: Record<string, Record<string, any>>
+  ): FeatureFlagEvaluationContext {
+    return {
+      distinctId,
+      groups: groups || {},
+      personProperties: personProperties || {},
+      groupProperties: groupProperties || {},
+      evaluationCache: {},
+    }
+  }
+
   /**
    * Capture an error exception as an event.
    *
@@ -1773,7 +1970,7 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
   ): Promise<void> {
     if (!ErrorTracking.isPreviouslyCapturedError(error)) {
       const syntheticException = new Error('PostHog syntheticException')
-      this.addPendingPromise(
+      return this.addPendingPromise(
         ErrorTracking.buildEventMessage(error, { syntheticException }, distinctId, additionalProperties).then((msg) =>
           this.captureImmediate(msg)
         )
@@ -1795,6 +1992,7 @@ export abstract class PostHogBackendClient extends PostHogCoreStateless implemen
     let mergedDistinctId = distinctId || contextData?.distinctId
 
     const mergedProperties = {
+      ...this.props,
       ...(contextData?.properties || {}),
       ...(properties || {}),
     }

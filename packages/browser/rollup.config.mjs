@@ -68,7 +68,7 @@ const plugins = (es5, noExternal) => [
         babelHelpers: 'bundled',
         plugins: [
             '@babel/plugin-transform-nullish-coalescing-operator',
-            // Explicitly included so we transform 1 ** 2 to Math.pow(1, 2) for ES6 compatability
+            // Explicitly included so we transform 1 ** 2 to Math.pow(1, 2) for ES6 compatibility
             '@babel/plugin-transform-exponentiation-operator',
         ],
         presets: [
@@ -103,6 +103,13 @@ const plugins = (es5, noExternal) => [
         toplevel: true,
         compress: {
             ecma: es5 ? 5 : 6,
+            passes: 2,
+            pure_getters: true,
+            unsafe_methods: true,
+            unsafe_comps: true,
+            unsafe_math: true,
+            unsafe_proto: true,
+            unsafe_regexp: true,
         },
         format: {
             comments: false,
@@ -208,6 +215,9 @@ const plugins = (es5, noExternal) => [
                               'version',
                               'surveys',
                               'calculateEventProperties',
+
+                              // used by wrapper SDKs (e.g. posthog-flutter, posthog-react-native) to override $lib and $lib_version
+                              '_overrideSDKInfo',
 
                               // possibly used by naughty users - we should decide if we want make these part of the public API, but be cautious for now
                               '_isIdentified',
@@ -315,7 +325,11 @@ const plugins = (es5, noExternal) => [
     },
 ]
 
-const entrypoints = fs.readdirSync('./src/entrypoints')
+const entryFilter = process.env.ENTRY
+const allEntrypoints = fs.readdirSync('./src/entrypoints')
+const entrypoints = entryFilter
+    ? allEntrypoints.filter((file) => file.startsWith(entryFilter))
+    : allEntrypoints
 
 const entrypointTargets = entrypoints.map((file) => {
     const fileParts = file.split('.')
@@ -365,9 +379,14 @@ const typeTargets = entrypoints
     .filter((file) => file.endsWith('.es.ts'))
     .map((file) => {
         const source = `./lib/src/entrypoints/${file.replace('.ts', '.d.ts')}`
+        const isExtensionBundles = file === 'extension-bundles.es.ts'
         /** @type {import('rollup').RollupOptions} */
         return {
             input: source,
+            // extension-bundles types must reference module.slim rather than inlining
+            // their own copies — classes with private fields are nominally typed, so
+            // duplicate declarations across .d.ts files are incompatible.
+            ...(isExtensionBundles ? { external: [/module\.slim/] } : {}),
             output: [
                 {
                     dir: path.resolve('./dist'),
@@ -378,7 +397,20 @@ const typeTargets = entrypoints
                 json(),
                 dts({
                     exclude: [],
+                    ...(isExtensionBundles ? { respectExternal: true } : {}),
                 }),
+                // dts preserves the tsc-era path (e.g. './module.slim.es') but the
+                // output has been renamed to module.slim.d.ts — fix the reference.
+                ...(isExtensionBundles
+                    ? [
+                          {
+                              name: 'fix-dts-external-paths',
+                              renderChunk(code) {
+                                  return code.replace(/\.\/module\.slim\.es(?=['"])/g, './module.slim')
+                              },
+                          },
+                      ]
+                    : []),
             ],
         }
     })

@@ -1,0 +1,35 @@
+{
+    "name": "example-convex",
+    "version": "0.1.0",
+    "private": true,
+    "packageManager": "pnpm@10.23.0",
+    "scripts": {
+        "dev": "run-p -r 'dev:*'",
+        "dev:backend": "convex dev --typecheck-components",
+        "dev:frontend": "vite --clearScreen false",
+        "typecheck": "tsc --noEmit && tsc -p convex"
+    },
+    "dependencies": {
+        "@ai-sdk/openai": "^2.0.98",
+        "@convex-dev/agent": "^0.3.2",
+        "@opentelemetry/exporter-trace-otlp-http": "^0.213.0",
+        "@opentelemetry/resources": "^2.6.0",
+        "@opentelemetry/sdk-node": "^0.213.0",
+        "@posthog/ai": "^7.9.5",
+        "@posthog/convex": "*",
+        "ai": "^5.0.150",
+        "convex": "^1.31.7",
+        "convex-helpers": "^0.1.103",
+        "posthog-node": "^5.28.0",
+        "react": "^19.2.1",
+        "react-dom": "^19.2.1"
+    },
+    "devDependencies": {
+        "@types/react": "^19",
+        "@types/react-dom": "^19",
+        "@vitejs/plugin-react": "^5.1.3",
+        "npm-run-all2": "8.0.4",
+        "typescript": "^5",
+        "vite": "^7.3.1"
+    }
+}

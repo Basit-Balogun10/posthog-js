@@ -37,7 +37,6 @@ import { MutationThrottler } from './mutation-throttler'
 import { createLogger } from '../../../utils/logger'
 import {
     clampToRange,
-    includes,
     isBoolean,
     isFunction,
     isNull,
@@ -63,6 +62,7 @@ import { PostHog } from '../../../posthog-core'
 import {
     CaptureResult,
     NetworkRecordOptions,
+    PerformanceCaptureConfig,
     Properties,
     SessionIdChangedCallback,
     SessionRecordingOptions,
@@ -84,8 +84,18 @@ const ONE_KB = 1024
 
 const ONE_MINUTE = 1000 * 60
 const FIVE_MINUTES = ONE_MINUTE * 5
+const ONE_HOUR = ONE_MINUTE * 60
+
+/**
+ * Extracts the network_timing value from a capturePerformance config.
+ * Returns `true`/`false` if explicitly set, or `undefined` if not specified.
+ */
+function networkTimingFromConfig(config: boolean | PerformanceCaptureConfig | undefined): boolean | undefined {
+    return isObject(config) ? config.network_timing : config
+}
 
 export const RECORDING_IDLE_THRESHOLD_MS = FIVE_MINUTES
+export const RECORDING_REMOTE_CONFIG_TTL_MS = ONE_HOUR
 export const RECORDING_MAX_EVENT_SIZE = ONE_KB * ONE_KB * 0.9 // ~1mb (with some wiggle room)
 export const RECORDING_BUFFER_TIMEOUT = 2000 // 2 seconds
 export const SESSION_RECORDING_BATCH_KEY = 'recordings'
@@ -111,11 +121,12 @@ interface SessionIdlePayload {
 export interface SnapshotBuffer {
     size: number
     data: any[]
+    sizes: number[]
     sessionId: string
     windowId: string
 }
 
-const ACTIVE_SOURCES = [
+const ACTIVE_SOURCES: IncrementalSource[] = [
     IncrementalSource.MouseMove,
     IncrementalSource.MouseInteraction,
     IncrementalSource.Scroll,
@@ -132,17 +143,21 @@ const newQueuedEvent = (rrwebMethod: () => void): QueuedRRWebEvent => ({
     attempt: 1,
 })
 
+function getRRWeb() {
+    return assignableWindow?.__PosthogExtensions__?.rrweb
+}
+
 function getRRWebRecord(): rrwebRecordType | undefined {
-    return assignableWindow?.__PosthogExtensions__?.rrweb?.record
+    return getRRWeb()?.record
 }
 
 export type compressedFullSnapshotEvent = {
-    type: EventType.FullSnapshot
+    type: typeof EventType.FullSnapshot
     data: string
 }
 
 export type compressedIncrementalSnapshotEvent = {
-    type: EventType.IncrementalSnapshot
+    type: typeof EventType.IncrementalSnapshot
     data: {
         source: IncrementalSource
         texts: string
@@ -153,9 +168,9 @@ export type compressedIncrementalSnapshotEvent = {
 }
 
 export type compressedIncrementalStyleSnapshotEvent = {
-    type: EventType.IncrementalSnapshot
+    type: typeof EventType.IncrementalSnapshot
     data: {
-        source: IncrementalSource.StyleSheetRule
+        source: typeof IncrementalSource.StyleSheetRule
         id?: number
         styleId?: number
         replace?: string
@@ -279,18 +294,20 @@ export const SEVEN_MEGABYTES = 1024 * 1024 * 7 * 0.9 // ~7mb (with some wiggle r
 export function splitBuffer(buffer: SnapshotBuffer, sizeLimit: number = SEVEN_MEGABYTES): SnapshotBuffer[] {
     if (buffer.size >= sizeLimit && buffer.data.length > 1) {
         const half = Math.floor(buffer.data.length / 2)
-        const firstHalf = buffer.data.slice(0, half)
-        const secondHalf = buffer.data.slice(half)
+        const firstHalfSizes = buffer.sizes.slice(0, half)
+        const secondHalfSizes = buffer.sizes.slice(half)
         return [
             splitBuffer({
-                size: estimateSize(firstHalf),
-                data: firstHalf,
+                size: firstHalfSizes.reduce((a, b) => a + b, 0),
+                data: buffer.data.slice(0, half),
+                sizes: firstHalfSizes,
                 sessionId: buffer.sessionId,
                 windowId: buffer.windowId,
             }),
             splitBuffer({
-                size: estimateSize(secondHalf),
-                data: secondHalf,
+                size: secondHalfSizes.reduce((a, b) => a + b, 0),
+                data: buffer.data.slice(half),
+                sizes: secondHalfSizes,
                 sessionId: buffer.sessionId,
                 windowId: buffer.windowId,
             }),
@@ -309,6 +326,7 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
     private _forceAllowLocalhostNetworkCapture = false
     private _stopRrweb: listenerHandler | undefined = undefined
     private _lastActivityTimestamp: number = Date.now()
+    private _isActivatingTrigger: boolean = false
     /**
      * if pageview capture is disabled,
      * then we can manually track href changes
@@ -319,6 +337,8 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
      */
     private _queuedRRWebEvents: QueuedRRWebEvent[] = []
     private _isIdle: boolean | 'unknown' = 'unknown'
+    private _rrwebError = false
+    private _maxDepthExceeded = false
 
     private _linkedFlagMatching: LinkedFlagMatching
     private _urlTriggerMatching: URLTriggerMatching
@@ -359,9 +379,14 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
 
     private get _isSampled(): boolean | null {
         const currentValue = this._instance.get_property(SESSION_RECORDING_IS_SAMPLED)
-        // originally we would store `true` or `false` or nothing,
-        // but that would mean sometimes we would carry on recording on session id change
-        return isBoolean(currentValue) ? currentValue : isString(currentValue) ? currentValue === this.sessionId : null
+        // we store the session id when sampled so that we can detect session id changes
+        // and `false` when not sampled
+        // legacy SDKs stored `true` when sampled, but that is not tied to a session id
+        // so we treat it as null (unknown) and will make a fresh decision
+        if (currentValue === true) {
+            return null
+        }
+        return currentValue === false ? false : isString(currentValue) ? currentValue === this.sessionId : null
     }
 
     private get _sampleRate(): number | null {
@@ -474,12 +499,9 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
             networkPayloadCapture_client_side?.recordHeaders || networkPayloadCapture_server_side?.recordHeaders
         const bodyEnabled =
             networkPayloadCapture_client_side?.recordBody || networkPayloadCapture_server_side?.recordBody
-        const clientConfigForPerformanceCapture = isObject(this._instance.config.capture_performance)
-            ? this._instance.config.capture_performance.network_timing
-            : this._instance.config.capture_performance
-        const networkTimingEnabled = !!(isBoolean(clientConfigForPerformanceCapture)
-            ? clientConfigForPerformanceCapture
-            : networkPayloadCapture_server_side?.capturePerformance)
+        const clientNetworkTiming = networkTimingFromConfig(this._instance.config.capture_performance)
+        const serverNetworkTiming = networkTimingFromConfig(networkPayloadCapture_server_side?.capturePerformance)
+        const networkTimingEnabled = !!(isBoolean(clientNetworkTiming) ? clientNetworkTiming : serverNetworkTiming)
 
         return headersEnabled || bodyEnabled || networkTimingEnabled
             ? { recordHeaders: headersEnabled, recordBody: bodyEnabled, recordPerformance: networkTimingEnabled }
@@ -667,17 +689,30 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
         logger.info('recording resumed')
     }
 
-    private _activateTrigger(triggerType: TriggerType) {
-        if (this._triggerMatching.triggerStatus(this.sessionId) === TRIGGER_PENDING) {
-            // status is stored separately for URL and event triggers
-            this._instance?.persistence?.register({
-                [triggerType === 'url'
-                    ? SESSION_RECORDING_URL_TRIGGER_ACTIVATED_SESSION
-                    : SESSION_RECORDING_EVENT_TRIGGER_ACTIVATED_SESSION]: this._sessionId,
-            })
+    private _activateTrigger(triggerType: TriggerType, matchDetail?: string) {
+        // Prevent re-entry: if we're already activating a trigger, skip to avoid infinite recursion
+        // This can happen when _reportStarted emits custom events that match the trigger condition
+        if (this._isActivatingTrigger) {
+            return
+        }
 
-            this._flushBuffer()
-            this._reportStarted((triggerType + '_trigger_matched') as SessionStartReason)
+        if (this._triggerMatching.triggerStatus(this.sessionId) === TRIGGER_PENDING) {
+            this._isActivatingTrigger = true
+            try {
+                // status is stored separately for URL and event triggers
+                this._instance?.persistence?.register({
+                    [triggerType === 'url'
+                        ? SESSION_RECORDING_URL_TRIGGER_ACTIVATED_SESSION
+                        : SESSION_RECORDING_EVENT_TRIGGER_ACTIVATED_SESSION]: this._sessionId,
+                })
+
+                this._flushBuffer()
+                this._reportStarted((triggerType + '_trigger_matched') as SessionStartReason, {
+                    [triggerType === 'url' ? 'matchedUrl' : 'matchedEvent']: matchDetail,
+                })
+            } finally {
+                this._isActivatingTrigger = false
+            }
         }
     }
 
@@ -691,6 +726,23 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
             return undefined
         }
         const parsedConfig = isObject(persistedConfig) ? persistedConfig : JSON.parse(persistedConfig)
+
+        // Only check TTL if recording hasn't started yet
+        // Once started, trust the config until a hard page load
+        if (!this.isStarted) {
+            // default to now so that configs persisted by older SDK versions
+            // (which never set cache_timestamp) are treated as fresh
+            const cacheTimestamp = parsedConfig.cache_timestamp ?? Date.now()
+            if (Date.now() - cacheTimestamp > RECORDING_REMOTE_CONFIG_TTL_MS) {
+                logger.info('persisted remote config for session recording is stale and will be ignored', {
+                    cacheTimestamp,
+                    persistedConfig,
+                })
+                this._instance.persistence?.unregister(SESSION_RECORDING_REMOTE_CONFIG)
+                return undefined
+            }
+        }
+
         return parsedConfig as SessionRecordingPersistedConfig
     }
 
@@ -764,6 +816,10 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
 
         this._makeSamplingDecision(this.sessionId)
         this._startRecorder()
+
+        if (this._rrwebError) {
+            return
+        }
 
         // calling addEventListener multiple times is safe and will not add duplicates
         addEventListener(window, 'beforeunload', this._onBeforeUnload)
@@ -857,14 +913,21 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
         // Reset first full snapshot timestamp for the new session
         this._instance.persistence?.unregister(SESSION_RECORDING_FIRST_FULL_SNAPSHOT_TIMESTAMP)
 
+        this._maxDepthExceeded = false
+        getRRWeb()?.resetMaxDepthState?.()
+
         this._tryAddCustomEvent('$session_id_change', { sessionId, windowId, changeReason })
 
         this._clearConditionalRecordingPersistence()
 
-        // Note: We don't call stop()/start() here because _updateWindowAndSessionIds
-        // already handles the restart. This callback fires synchronously during
-        // checkAndGetSessionAndWindowId(), so _updateWindowAndSessionIds will detect
-        // the session change and handle the restart after this callback returns.
+        // When idle, _updateWindowAndSessionIds bails early and won't pick up the
+        // session change, so we restart here. Otherwise it handles the restart after
+        // this callback returns.
+        if (this._isIdle === true) {
+            this._isIdle = 'unknown'
+            this.stop()
+            this.start('session_id_changed')
+        }
 
         if (shouldLinkSessions) {
             this._tryAddCustomEvent('$session_starting', {
@@ -884,14 +947,12 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
         }
     }
 
-    stop() {
+    private _teardown() {
         window?.removeEventListener('beforeunload', this._onBeforeUnload)
         window?.removeEventListener('offline', this._onOffline)
         window?.removeEventListener('online', this._onOnline)
         window?.removeEventListener('visibilitychange', this._onVisibilityChange)
 
-        this._flushBuffer()
-        this._clearBuffer()
         clearInterval(this._fullSnapshotTimer)
         this._clearFlushBufferTimer()
 
@@ -919,8 +980,19 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
 
         this._stopRrweb?.()
         this._stopRrweb = undefined
+    }
 
+    stop() {
+        this._flushBuffer()
+        this._clearBuffer()
+        this._teardown()
         logger.info('stopped')
+    }
+
+    discard() {
+        this._clearBuffer()
+        this._teardown()
+        logger.info('discarded')
     }
 
     onRRwebEmit(rawEvent: eventWithTime) {
@@ -945,7 +1017,7 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
         this._urlTriggerMatching.checkUrlTriggerConditions(
             () => this._pauseRecording(),
             () => this._resumeRecording(),
-            (triggerType) => this._activateTrigger(triggerType),
+            (triggerType, matchDetail) => this._activateTrigger(triggerType, matchDetail),
             this.sessionId
         )
         // always have to check if the URL is blocked really early,
@@ -1054,6 +1126,10 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
             $window_id: targetWindowId,
         }
 
+        if (event.type === EventType.FullSnapshot && getRRWeb()?.wasMaxDepthReached?.()) {
+            this._maxDepthExceeded = true
+        }
+
         if (this.status === DISABLED) {
             this._clearBuffer()
             return
@@ -1069,6 +1145,7 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
             isRecordingEnabled: true,
             // things that do still vary
             isSampled: this._isSampled,
+            rrwebError: this._rrwebError,
             urlTriggerMatching: this._urlTriggerMatching,
             eventTriggerMatching: this._eventTriggerMatching,
             linkedFlagMatching: this._linkedFlagMatching,
@@ -1151,7 +1228,7 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
                     $snapshot_data: snapshotBuffer.data,
                     $session_id: snapshotBuffer.sessionId,
                     $window_id: snapshotBuffer.windowId,
-                    $lib: 'web',
+                    $lib: Config.LIB_NAME,
                     $lib_version: Config.LIB_VERSION,
                 })
             })
@@ -1235,6 +1312,7 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
 
         this._buffer.size += properties.$snapshot_bytes
         this._buffer.data.push(properties.$snapshot_data)
+        this._buffer.sizes.push(properties.$snapshot_bytes)
 
         if (!this._flushBufferTimer && !this._isIdle) {
             this._flushBufferTimer = setTimeout(() => {
@@ -1274,7 +1352,8 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
         }
         if (lastMetaIndex >= 0) {
             this._buffer.data = this._buffer.data.slice(lastMetaIndex)
-            this._buffer.size = this._buffer.data.reduce((acc, curr) => acc + estimateSize(curr), 0)
+            this._buffer.sizes = this._buffer.sizes.slice(lastMetaIndex)
+            this._buffer.size = this._buffer.sizes.reduce((a, b) => a + b, 0)
             return this._buffer
         } else {
             return this._clearBuffer()
@@ -1285,6 +1364,7 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
         this._buffer = {
             size: 0,
             data: [],
+            sizes: [],
             sessionId: this._sessionId,
             windowId: this._windowId,
         }
@@ -1292,6 +1372,12 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
     }
 
     private _onBeforeUnload = (): void => {
+        // If still buffering (waiting for triggers), discard the buffer
+        if (this.status === BUFFERING) {
+            this._clearBuffer()
+            return
+        }
+
         this._flushBuffer()
     }
 
@@ -1315,8 +1401,11 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
             $session_recording_start_reason: startReason,
         })
         logger.info(startReason.replace('_', ' '), tagPayload)
-        if (!includes(['recording_initialized', 'session_id_changed'], startReason)) {
-            this._tryAddCustomEvent(startReason, tagPayload)
+        if (startReason !== 'session_id_changed') {
+            this._tryAddCustomEvent('$recording_started', {
+                reason: startReason,
+                ...tagPayload,
+            })
         }
     }
 
@@ -1463,9 +1552,11 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
             // If anything could go wrong here, it has the potential to block the main loop,
             // so we catch all errors.
             try {
-                if (this._eventTriggerMatching._eventTriggers.includes(event.event)) {
-                    this._activateTrigger('event')
-                }
+                this._eventTriggerMatching.checkEventTriggerConditions(
+                    event.event,
+                    (triggerType, matchDetail) => this._activateTrigger(triggerType, matchDetail),
+                    this.sessionId
+                )
             } catch (e) {
                 logger.error('Could not activate event trigger', e)
             }
@@ -1483,6 +1574,8 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
             $sdk_debug_session_start: sessionStartTimestamp,
             $sdk_debug_replay_flushed_size: this._flushedSizeTracker?.currentTrackedSize,
             $sdk_debug_replay_full_snapshots: this._fullSnapshotTimestamps,
+            $snapshot_max_depth_exceeded: this._maxDepthExceeded,
+            $sdk_debug_replay_rrweb_error: this._rrwebError,
         }
     }
 
@@ -1568,6 +1661,16 @@ export class LazyLoadedSessionRecording implements LazyLoadedSessionRecordingInt
             plugins: activePlugins,
             ...sessionRecordingOptions,
         })
+
+        if (!this._stopRrweb) {
+            this._rrwebError = true
+            logger.error(
+                'rrweb failed to start - Loss of recording data is possible. Check the browser console for rrweb errors.'
+            )
+            return
+        }
+
+        this._rrwebError = false
 
         // We reset the last activity timestamp, resetting the idle timer
         this._lastActivityTimestamp = Date.now()

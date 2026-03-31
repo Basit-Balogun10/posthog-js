@@ -6,6 +6,26 @@ import { ConversationsRemoteConfig } from './posthog-conversations-types'
 // eslint-disable-next-line posthog-js/no-external-replay-imports
 import type { SAMPLED } from './extensions/replay/external/triggerMatching'
 
+// Extension class types for __extensionClasses (type-only, no bundle impact)
+import type { ExtensionConstructor } from './extensions/types'
+import type { Autocapture } from './autocapture'
+import type { DeadClicksAutocapture } from './extensions/dead-clicks-autocapture'
+import type { ExceptionObserver } from './extensions/exception-autocapture'
+import type { HistoryAutocapture } from './extensions/history-autocapture'
+import type { TracingHeaders } from './extensions/tracing-headers'
+import type { WebVitalsAutocapture } from './extensions/web-vitals'
+import type { SessionRecording } from './extensions/replay/session-recording'
+import type { Heatmaps } from './heatmaps'
+import type { PostHogProductTours } from './posthog-product-tours'
+import type { SiteApps } from './site-apps'
+import type { PostHogSurveys } from './posthog-surveys'
+import type { Toolbar } from './extensions/toolbar'
+import type { PostHogExceptions } from './posthog-exceptions'
+import type { WebExperiments } from './web-experiments'
+import type { PostHogConversations } from './extensions/conversations/posthog-conversations'
+import type { PostHogFeatureFlags } from './posthog-featureflags'
+import type { PostHogLogs } from './posthog-logs'
+
 // ============================================================================
 // Re-export public types from @posthog/types
 // ============================================================================
@@ -23,11 +43,16 @@ export type {
     FeatureFlagMetadata,
     EvaluationReason,
     FeatureFlagResult,
+    FeatureFlagOptions,
     RemoteConfigFeatureFlagCallback,
     EarlyAccessFeature,
     EarlyAccessFeatureStage,
     EarlyAccessFeatureCallback,
     EarlyAccessFeatureResponse,
+    FeatureFlagOverrides,
+    FeatureFlagPayloadOverrides,
+    FeatureFlagOverrideOptions,
+    OverrideFeatureFlagsOptions,
 } from '@posthog/types'
 
 // Request types
@@ -90,13 +115,14 @@ import type {
     ToolbarParams,
     PostHogConfig as BasePostHogConfig,
     PostHog as BasePostHogInterface,
+    RequestResponse,
 } from '@posthog/types'
 
 /* Small override from the base class to make it more specific to the browser/src/posthog-core.ts file
  * This guarantees we'll be able to use `PostHogConfig` as implemented in the browser/src/posthog-core.ts file
  * using the proper `loaded` function signature.
  */
-export type PostHogInterface = Omit<BasePostHogInterface, 'config' | 'init' | 'set_config'>
+export type PostHogInterface = Omit<BasePostHogInterface, 'config' | 'init'>
 
 /*
  * Specify that `loaded` should be using the PostHog instance type
@@ -104,6 +130,32 @@ export type PostHogInterface = Omit<BasePostHogInterface, 'config' | 'init' | 's
  */
 export type PostHogConfig = Omit<BasePostHogConfig, 'loaded'> & {
     loaded: (posthog: PostHogInterface) => void
+
+    /**
+     * Internal: Extension class overrides for tree-shaking support.
+     * When provided, these classes are used instead of the default imports.
+     * This enables entrypoints to control which extensions are bundled.
+     * @internal
+     */
+    __extensionClasses?: {
+        exceptions?: ExtensionConstructor<PostHogExceptions>
+        historyAutocapture?: ExtensionConstructor<HistoryAutocapture>
+        tracingHeaders?: ExtensionConstructor<TracingHeaders>
+        siteApps?: ExtensionConstructor<SiteApps>
+        sessionRecording?: ExtensionConstructor<SessionRecording>
+        autocapture?: ExtensionConstructor<Autocapture>
+        productTours?: ExtensionConstructor<PostHogProductTours>
+        heatmaps?: ExtensionConstructor<Heatmaps>
+        webVitalsAutocapture?: ExtensionConstructor<WebVitalsAutocapture>
+        exceptionObserver?: ExtensionConstructor<ExceptionObserver>
+        deadClicksAutocapture?: ExtensionConstructor<DeadClicksAutocapture>
+        surveys?: ExtensionConstructor<PostHogSurveys>
+        toolbar?: ExtensionConstructor<Toolbar>
+        experiments?: ExtensionConstructor<WebExperiments>
+        conversations?: ExtensionConstructor<PostHogConversations>
+        featureFlags?: ExtensionConstructor<PostHogFeatureFlags>
+        logs?: ExtensionConstructor<PostHogLogs>
+    }
 }
 
 // See https://nextjs.org/docs/app/api-reference/functions/fetch#fetchurl-options
@@ -117,7 +169,7 @@ export interface RequestWithOptions {
     transport?: 'XHR' | 'fetch' | 'sendBeacon'
     method?: 'POST' | 'GET'
     urlQueryArgs?: { compression: Compression }
-    callback?: (response: import('@posthog/types').RequestResponse) => void
+    callback?: (response: RequestResponse) => void
     timeout?: number
     noRetries?: boolean
     disableTransport?: ('XHR' | 'fetch' | 'sendBeacon')[]
@@ -152,6 +204,11 @@ export type SessionRecordingPersistedConfig = Omit<
     | 'sampleRate'
     | 'minimumDurationMilliseconds'
 > & {
+    /**
+     * Used to determine if the persisted config is still valid or we need to wait for a new one
+     * only accepts undefined since older versions of the library didn't set this.
+     */
+    cache_timestamp?: number
     enabled: boolean
     networkPayloadCapture: SessionRecordingRemoteConfig['networkPayloadCapture'] & {
         capturePerformance: RemoteConfig['capturePerformance']
@@ -323,8 +380,7 @@ export interface RemoteConfig {
 }
 
 /**
- * Flags returns feature flags and their payloads, and optionally returns everything else from the remote config
- * assuming it's called with `config=true`
+ * Flags returns feature flags and their payloads
  */
 export interface FlagsResponse extends RemoteConfig {
     featureFlags: Record<string, string | boolean>
@@ -381,8 +437,6 @@ export interface PersistentStore {
     _remove: (name: string, cross_subdomain?: boolean) => void
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type Breaker = {}
 export type EventHandler = (event: Event) => boolean | void
 
 export type SnippetArrayItem = [method: string, ...args: any[]]
@@ -465,7 +519,8 @@ export type OverrideConfig = {
     event_trigger: boolean
 }
 
-export enum Compression {
-    GZipJS = 'gzip-js',
-    Base64 = 'base64',
-}
+export const Compression = {
+    GZipJS: 'gzip-js',
+    Base64: 'base64',
+} as const
+export type Compression = (typeof Compression)[keyof typeof Compression]

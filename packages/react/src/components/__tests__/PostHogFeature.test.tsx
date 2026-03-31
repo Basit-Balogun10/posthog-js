@@ -48,6 +48,13 @@ describe('PostHogFeature component', () => {
             isFeatureEnabled: (flag: string) => !!FEATURE_FLAG_STATUS[flag],
             getFeatureFlag: (flag: string) => FEATURE_FLAG_STATUS[flag],
             getFeatureFlagPayload: (flag: string) => FEATURE_FLAG_PAYLOADS[flag],
+            getFeatureFlagResult: (flag: string) => ({
+                key: flag,
+                enabled: !!FEATURE_FLAG_STATUS[flag],
+                variant:
+                    typeof FEATURE_FLAG_STATUS[flag] === 'string' ? (FEATURE_FLAG_STATUS[flag] as string) : undefined,
+                payload: FEATURE_FLAG_PAYLOADS[flag],
+            }),
             onFeatureFlags: (callback: any) => {
                 const activeFlags: string[] = []
                 for (const flag in FEATURE_FLAG_STATUS) {
@@ -248,5 +255,44 @@ describe('PostHogFeature component', () => {
 
         fireEvent.click(screen.getByTestId('hi_example_feature_1_payload'))
         expect(posthog.capture).toHaveBeenCalledTimes(1)
+    })
+
+    it('should not render when flag does not exist and no match is specified', () => {
+        render(
+            <PostHogProvider client={posthog}>
+                <PostHogFeature flag={'nonexistent_flag'}>
+                    <div data-testid="helloDiv">Hello</div>
+                </PostHogFeature>
+            </PostHogProvider>
+        )
+
+        expect(screen.queryByTestId('helloDiv')).not.toBeInTheDocument()
+        expect(posthog.capture).not.toHaveBeenCalled()
+    })
+
+    it('should render fallback when flag does not exist (like new-cta example)', () => {
+        render(
+            <PostHogProvider client={posthog}>
+                <PostHogFeature flag={'new-cta'} fallback={<div data-testid="oldButton">Old Button</div>}>
+                    <div data-testid="newButton">New Button</div>
+                </PostHogFeature>
+            </PostHogProvider>
+        )
+
+        expect(screen.queryByTestId('newButton')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('oldButton')).toBeInTheDocument()
+        expect(posthog.capture).not.toHaveBeenCalled()
+    })
+
+    it('should render content when match=false and flag variant is false', () => {
+        render(
+            <PostHogProvider client={posthog}>
+                <PostHogFeature flag={'test_false'} match={false}>
+                    <div data-testid="disabledUI">Show when disabled</div>
+                </PostHogFeature>
+            </PostHogProvider>
+        )
+
+        expect(screen.queryByTestId('disabledUI')).toBeInTheDocument()
     })
 })

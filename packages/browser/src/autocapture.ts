@@ -27,6 +27,7 @@ import { document, window } from './utils/globals'
 import { convertToURL } from './utils/request-utils'
 import { isDocumentFragment, isElementNode, isTag, isTextNode } from './utils/element-utils'
 import { includes } from '@posthog/core'
+import type { Extension } from './extensions/types'
 
 const COPY_AUTOCAPTURE_EVENT = '$copy_autocapture'
 
@@ -232,7 +233,7 @@ export function autocapturePropertiesForElement(
     return { props }
 }
 
-export class Autocapture {
+export class Autocapture implements Extension {
     instance: PostHog
     _initialized: boolean = false
     _isDisabledServerSide: boolean | null = null
@@ -244,6 +245,10 @@ export class Autocapture {
         this.instance = instance
         this.rageclicks = new RageClick(instance.config.rageclick)
         this._elementSelectors = null
+    }
+
+    initialize() {
+        this.startIfEnabled()
     }
 
     private get _config(): AutocaptureConfig {
@@ -300,6 +305,13 @@ export class Autocapture {
             this._elementsChainAsString = response.elementsChainAsString
         }
 
+        // NOTE: Unlike other extensions (heatmaps, web-vitals, etc.), we intentionally
+        // DO NOT guard against missing autocapture_opt_out key here. Autocapture uses
+        // a "wait for server, then enable unless explicitly opted out" model:
+        // - Before remote config: autocapture disabled (isEnabled returns false)
+        // - After remote config: enabled unless autocapture_opt_out is explicitly true
+        // Missing/undefined key → !!undefined = false → autocapture enabled
+        // This is intentional and different from opt-in features like heatmaps.
         if (this.instance.persistence) {
             this.instance.persistence.register({
                 [AUTOCAPTURE_DISABLED_SERVER_SIDE]: !!response['autocapture_opt_out'],

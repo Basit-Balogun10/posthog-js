@@ -1,4 +1,9 @@
 /**
+ * Position of the widget on the screen
+ */
+export type WidgetPosition = 'bottom_left' | 'bottom_right' | 'top_left' | 'top_right'
+
+/**
  * Remote configuration for conversations from the PostHog server
  */
 export interface ConversationsRemoteConfig {
@@ -66,12 +71,49 @@ export interface ConversationsRemoteConfig {
      * Empty array or not present means show on all domains.
      */
     domains?: string[]
+
+    /**
+     * Position of the widget on the screen
+     * @default 'bottom_right'
+     */
+    widgetPosition?: WidgetPosition
 }
 
 /**
  * Author types for messages in a conversation
  */
 export type MessageAuthorType = 'customer' | 'AI' | 'human'
+
+/**
+ * TipTap mark types for inline formatting
+ */
+export interface TipTapMark {
+    type: 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'link'
+    attrs?: {
+        href?: string
+        target?: string
+        [key: string]: unknown
+    }
+}
+
+/**
+ * TipTap node representing content in the document tree
+ */
+export interface TipTapNode {
+    type: string
+    attrs?: Record<string, unknown>
+    content?: TipTapNode[]
+    marks?: TipTapMark[]
+    text?: string
+}
+
+/**
+ * TipTap document - the root node of rich content
+ */
+export interface TipTapDoc {
+    type: 'doc'
+    content?: TipTapNode[]
+}
 
 /**
  * A message in a conversation
@@ -83,9 +125,15 @@ export interface Message {
     id: string
 
     /**
-     * The message content/text
+     * The message content as plain text (fallback)
      */
     content: string
+
+    /**
+     * Rich content in TipTap JSON format (preferred for rendering)
+     * Falls back to `content` if missing or invalid
+     */
+    rich_content?: TipTapDoc
 
     /**
      * Type of the message author
@@ -272,6 +320,73 @@ export interface GetTicketsResponse {
      * Array of tickets
      */
     results: Ticket[]
+}
+
+/**
+ * Payload for restoring ticket access from a one-time token
+ */
+export interface RestoreFromTokenPayload {
+    /**
+     * Opaque one-time restore token from email link
+     */
+    restore_token: string
+
+    /**
+     * Current browser widget session ID requesting restore
+     */
+    widget_session_id: string
+
+    /**
+     * Optional distinct ID for debugging/observability
+     */
+    distinct_id?: string
+
+    /**
+     * Optional current URL for backend observability
+     */
+    current_url?: string
+}
+
+export type RestoreFromTokenStatus = 'success' | 'expired' | 'invalid' | 'used'
+
+/**
+ * Response from restore token exchange endpoint
+ */
+export interface RestoreFromTokenResponse {
+    /**
+     * Restore result
+     */
+    status: RestoreFromTokenStatus
+
+    /**
+     * Canonical widget session ID to use after restore
+     */
+    widget_session_id?: string
+
+    /**
+     * Migrated ticket IDs, if any
+     */
+    migrated_ticket_ids?: string[]
+
+    /**
+     * Optional machine-readable backend code
+     */
+    code?: string
+}
+
+/**
+ * Payload for requesting a self-service restore link email
+ */
+export interface RequestRestoreLinkPayload {
+    email: string
+    request_url: string
+}
+
+/**
+ * Response from self-service restore link request
+ */
+export interface RequestRestoreLinkResponse {
+    ok: true
 }
 
 /**

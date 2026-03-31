@@ -1,6 +1,6 @@
 {
   "name": "posthog-node",
-  "version": "5.24.7",
+  "version": "5.28.9",
   "description": "PostHog Node.js integration",
   "repository": {
     "type": "git",
@@ -12,6 +12,7 @@
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "test:unit": "jest",
+    "test:edge-compat": "jest --env @edge-runtime/jest-environment --no-coverage",
     "prebuild": "node -p \"'export const version = \\'' + require('./package.json').version + '\\''\" > src/version.ts",
     "build": "rslib build",
     "dev": "rslib build -w",
@@ -40,12 +41,22 @@
     "@posthog/core": "workspace:*"
   },
   "devDependencies": {
+    "@edge-runtime/jest-environment": "^4.0.0",
     "@posthog-tooling/tsconfig-base": "workspace:*",
     "@rslib/core": "catalog:",
     "@types/express": "^5.0.5",
     "@types/jest": "catalog:",
     "@types/node": "^20.0.0",
-    "jest": "catalog:"
+    "jest": "catalog:",
+    "rxjs": "^7.8.0"
+  },
+  "peerDependencies": {
+    "rxjs": "^7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "rxjs": {
+      "optional": true
+    }
   },
   "keywords": [
     "posthog",
@@ -78,6 +89,17 @@
       },
       "import": "./dist/entrypoints/index.node.mjs",
       "require": "./dist/entrypoints/index.node.js"
+    },
+    "./edge": {
+      "types": "./dist/entrypoints/index.edge.d.ts",
+      "import": "./dist/entrypoints/index.edge.mjs",
+      "require": "./dist/entrypoints/index.edge.js",
+      "default": "./dist/entrypoints/index.edge.js"
+    },
+    "./nestjs": {
+      "types": "./dist/entrypoints/nestjs.d.ts",
+      "import": "./dist/entrypoints/nestjs.mjs",
+      "require": "./dist/entrypoints/nestjs.js"
     },
     "./experimental": {
       "types": "./dist/experimental.d.ts"

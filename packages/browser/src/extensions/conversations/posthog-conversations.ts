@@ -1,3 +1,4 @@
+import { LOAD_EXT_NOT_FOUND } from '../../constants'
 import { PostHog } from '../../posthog-core'
 import {
     ConversationsRemoteConfig,
@@ -5,6 +6,8 @@ import {
     GetTicketsOptions,
     GetTicketsResponse,
     MarkAsReadResponse,
+    RestoreFromTokenResponse,
+    RequestRestoreLinkResponse,
     SendMessageResponse,
     UserProvidedTraits,
 } from '../../posthog-conversations-types'
@@ -12,12 +15,15 @@ import { RemoteConfig } from '../../types'
 import { assignableWindow, LazyLoadedConversationsInterface } from '../../utils/globals'
 import { createLogger } from '../../utils/logger'
 import { isNullish, isUndefined, isBoolean, isNull } from '@posthog/core'
+import { isToolbarInstance } from '../../utils'
+import { Extension } from '../types'
 
 const logger = createLogger('[Conversations]')
+const NOT_AVAILABLE = 'Conversations not available yet.'
 
 export type ConversationsManager = LazyLoadedConversationsInterface
 
-export class PostHogConversations {
+export class PostHogConversations implements Extension {
     // This is set to undefined until the remote config is loaded
     // then it's set to true if conversations are enabled
     // or false if conversations are disabled in the project settings
@@ -27,6 +33,10 @@ export class PostHogConversations {
     private _remoteConfig: ConversationsRemoteConfig | null = null
 
     constructor(private _instance: PostHog) {}
+
+    initialize() {
+        this.loadIfEnabled()
+    }
 
     onRemoteConfig(response: RemoteConfig) {
         // Don't load conversations if disabled via config
@@ -72,6 +82,12 @@ export class PostHogConversations {
         if (this._instance.config.disable_conversations) {
             return
         }
+        // The toolbar's internal PostHog instance must not own the conversations
+        // manager — its distinct_id is always anonymous and would be sent instead
+        // of the identified user's ID.
+        if (isToolbarInstance(this._instance.config)) {
+            return
+        }
         if (this._instance.config.cookieless_mode && this._instance.consent.isOptedOut()) {
             return
         }
@@ -114,7 +130,7 @@ export class PostHogConversations {
             // If we reach here, conversations code is not loaded yet
             const loadExternalDependency = phExtensions.loadExternalDependency
             if (!loadExternalDependency) {
-                this._handleLoadError('PostHog loadExternalDependency extension not found.')
+                this._handleLoadError(LOAD_EXT_NOT_FOUND)
                 return
             }
 
@@ -221,7 +237,7 @@ export class PostHogConversations {
         newTicket?: boolean
     ): Promise<SendMessageResponse | null> {
         if (!this._conversationsManager) {
-            logger.warn('Conversations not available yet.')
+            logger.warn(NOT_AVAILABLE)
             return null
         }
         return this._conversationsManager.sendMessage(message, userTraits, newTicket)
@@ -244,7 +260,7 @@ export class PostHogConversations {
      */
     async getMessages(ticketId?: string, after?: string): Promise<GetMessagesResponse | null> {
         if (!this._conversationsManager) {
-            logger.warn('Conversations not available yet.')
+            logger.warn(NOT_AVAILABLE)
             return null
         }
         return this._conversationsManager.getMessages(ticketId, after)
@@ -262,7 +278,7 @@ export class PostHogConversations {
      */
     async markAsRead(ticketId?: string): Promise<MarkAsReadResponse | null> {
         if (!this._conversationsManager) {
-            logger.warn('Conversations not available yet.')
+            logger.warn(NOT_AVAILABLE)
             return null
         }
         return this._conversationsManager.markAsRead(ticketId)
@@ -284,10 +300,51 @@ export class PostHogConversations {
      */
     async getTickets(options?: GetTicketsOptions): Promise<GetTicketsResponse | null> {
         if (!this._conversationsManager) {
-            logger.warn('Conversations not available yet.')
+            logger.warn(NOT_AVAILABLE)
             return null
         }
         return this._conversationsManager.getTickets(options)
+    }
+
+    /**
+     * Request a restore link email for previous conversations.
+     *
+     * @param email - Email address associated with previous conversations
+     * @returns Promise with generic success response or null if conversations unavailable
+     */
+    async requestRestoreLink(email: string): Promise<RequestRestoreLinkResponse | null> {
+        if (!this._conversationsManager) {
+            logger.warn(NOT_AVAILABLE)
+            return null
+        }
+        return this._conversationsManager.requestRestoreLink(email)
+    }
+
+    /**
+     * Redeem a restore token and relink eligible tickets to this browser session.
+     *
+     * @param restoreToken - Opaque restore token from restore email link
+     * @returns Promise with restore status or null if conversations unavailable
+     */
+    async restoreFromToken(restoreToken: string): Promise<RestoreFromTokenResponse | null> {
+        if (!this._conversationsManager) {
+            logger.warn(NOT_AVAILABLE)
+            return null
+        }
+        return this._conversationsManager.restoreFromToken(restoreToken)
+    }
+
+    /**
+     * Parse and redeem `ph_conv_restore` token from the current URL.
+     *
+     * @returns Promise with restore status, or null when no token/conversations unavailable
+     */
+    async restoreFromUrlToken(): Promise<RestoreFromTokenResponse | null> {
+        if (!this._conversationsManager) {
+            logger.warn(NOT_AVAILABLE)
+            return null
+        }
+        return this._conversationsManager.restoreFromUrlToken()
     }
 
     /**

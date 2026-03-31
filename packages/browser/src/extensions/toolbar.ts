@@ -1,4 +1,4 @@
-import { addEventListener, trySafe } from '../utils'
+import { addEventListener, trySafe, isToolbarInstance } from '../utils'
 import { PostHog } from '../posthog-core'
 import { ToolbarParams } from '../types'
 import { _getHashParam } from '../utils/request-utils'
@@ -6,6 +6,7 @@ import { createLogger } from '../utils/logger'
 import { window, document, assignableWindow } from '../utils/globals'
 import { TOOLBAR_ID } from '../constants'
 import { isFunction, isNullish } from '@posthog/core'
+import { Extension } from './types'
 
 // TRICKY: Many web frameworks will modify the route on load, potentially before posthog is initialized.
 // To get ahead of this we grab it as soon as the posthog-js is parsed
@@ -17,13 +18,10 @@ const LOCALSTORAGE_KEY = '_postHogToolbarParams'
 
 const logger = createLogger('[Toolbar]')
 
-enum ToolbarState {
-    UNINITIALIZED = 0,
-    LOADING = 1,
-    LOADED = 2,
-}
+const ToolbarState = { UNINITIALIZED: 0, LOADING: 1, LOADED: 2 } as const
+type ToolbarState = (typeof ToolbarState)[keyof typeof ToolbarState]
 
-export class Toolbar {
+export class Toolbar implements Extension {
     instance: PostHog
 
     constructor(instance: PostHog) {
@@ -39,6 +37,10 @@ export class Toolbar {
         return assignableWindow['ph_toolbar_state'] ?? ToolbarState.UNINITIALIZED
     }
 
+    initialize(): boolean {
+        return this.maybeLoadToolbar()
+    }
+
     /**
      * To load the toolbar, we need an access token and other state. That state comes from one of three places:
      * 1. In the URL hash params
@@ -49,6 +51,10 @@ export class Toolbar {
         localStorage: Storage | undefined = undefined,
         history: History | undefined = undefined
     ): boolean {
+        // don't load the toolbar on the toolbar :)
+        if (isToolbarInstance(this.instance.config)) {
+            return false
+        }
         if (!window || !document) {
             return false
         }

@@ -1,5 +1,9 @@
-import { SURVEYS } from './constants'
+import { LOAD_EXT_NOT_FOUND, SURVEYS } from './constants'
+
+const SURVEY_NOT_LOADED = 'SDK is not enabled or survey functionality is not yet loaded'
+const SURVEY_DISABLED = 'Disabled. Not loading surveys.'
 import { SurveyManager } from './extensions/surveys'
+import type { Extension } from './extensions/types'
 import { PostHog } from './posthog-core'
 import {
     DisplaySurveyOptions,
@@ -22,7 +26,7 @@ import {
 } from './utils/survey-utils'
 import { isNullish, isUndefined, isArray } from '@posthog/core'
 
-export class PostHogSurveys {
+export class PostHogSurveys implements Extension {
     // this is set to undefined until the remote config is loaded
     // then it's set to true if there are surveys to load
     // or false if there are no surveys to load
@@ -38,15 +42,23 @@ export class PostHogSurveys {
         context: { isLoaded: boolean; error?: string }
     }> | null = null
 
+    private get _config() {
+        return this._instance.config
+    }
+
     constructor(private readonly _instance: PostHog) {
         // we set this to undefined here because we need the persistence storage for this type
         // but that's not initialized until loadIfEnabled is called.
         this._surveyEventReceiver = null
     }
 
+    initialize() {
+        this.loadIfEnabled()
+    }
+
     onRemoteConfig(response: RemoteConfig) {
         // only load surveys if they are enabled and there are surveys to load
-        if (this._instance.config.disable_surveys) {
+        if (this._config.disable_surveys) {
             return
         }
 
@@ -82,11 +94,11 @@ export class PostHogSurveys {
             logger.info('Already initializing surveys, skipping...')
             return
         }
-        if (this._instance.config.disable_surveys) {
-            logger.info('Disabled. Not loading surveys.')
+        if (this._config.disable_surveys) {
+            logger.info(SURVEY_DISABLED)
             return
         }
-        if (this._instance.config.cookieless_mode && this._instance.consent.isOptedOut()) {
+        if (this._config.cookieless_mode && this._instance.consent.isOptedOut()) {
             logger.info('Not loading surveys in cookieless mode without consent.')
             return
         }
@@ -99,11 +111,11 @@ export class PostHogSurveys {
 
         // waiting for remote config to load
         // if surveys is forced enable (like external surveys), ignore the remote config and load surveys
-        if (isUndefined(this._isSurveysEnabled) && !this._instance.config.advanced_enable_surveys) {
+        if (isUndefined(this._isSurveysEnabled) && !this._config.advanced_enable_surveys) {
             return
         }
 
-        const isSurveysEnabled = this._isSurveysEnabled || this._instance.config.advanced_enable_surveys
+        const isSurveysEnabled = this._isSurveysEnabled || this._config.advanced_enable_surveys
 
         this._isInitializingSurveys = true
 
@@ -119,7 +131,7 @@ export class PostHogSurveys {
             const loadExternalDependency = phExtensions.loadExternalDependency
             if (!loadExternalDependency) {
                 // Cannot load surveys code
-                this._handleSurveyLoadError('PostHog loadExternalDependency extension not found.')
+                this._handleSurveyLoadError(LOAD_EXT_NOT_FOUND)
                 return
             }
 
@@ -195,8 +207,8 @@ export class PostHogSurveys {
     getSurveys(callback: SurveyCallback, forceReload = false) {
         // In case we manage to load the surveys script, but config says not to load surveys
         // then we shouldn't return survey data
-        if (this._instance.config.disable_surveys) {
-            logger.info('Disabled. Not loading surveys.')
+        if (this._config.disable_surveys) {
+            logger.info(SURVEY_DISABLED)
             return callback([])
         }
 
@@ -225,9 +237,9 @@ export class PostHogSurveys {
         }
 
         this._instance._send_request({
-            url: this._instance.requestRouter.endpointFor('api', `/api/surveys/?token=${this._instance.config.token}`),
+            url: this._instance.requestRouter.endpointFor('api', `/api/surveys/?token=${this._config.token}`),
             method: 'GET',
-            timeout: this._instance.config.surveys_request_timeout_ms,
+            timeout: this._config.surveys_request_timeout_ms,
             callback: (response) => {
                 this._getSurveysInFlightPromise = null
 
@@ -292,7 +304,7 @@ export class PostHogSurveys {
 
     private _checkSurveyEligibility(surveyId: string | Survey): { eligible: boolean; reason?: string } {
         if (isNullish(this._surveyManager)) {
-            return { eligible: false, reason: 'SDK is not enabled or survey functionality is not yet loaded' }
+            return { eligible: false, reason: SURVEY_NOT_LOADED }
         }
         const survey = typeof surveyId === 'string' ? this._getSurveyById(surveyId) : surveyId
         if (!survey) {
@@ -304,7 +316,7 @@ export class PostHogSurveys {
     canRenderSurvey(surveyId: string | Survey): SurveyRenderReason {
         if (isNullish(this._surveyManager)) {
             logger.warn('init was not called')
-            return { visible: false, disabledReason: 'SDK is not enabled or survey functionality is not yet loaded' }
+            return { visible: false, disabledReason: SURVEY_NOT_LOADED }
         }
         const eligibility = this._checkSurveyEligibility(surveyId)
 
@@ -318,7 +330,7 @@ export class PostHogSurveys {
             logger.warn('init was not called')
             return Promise.resolve({
                 visible: false,
-                disabledReason: 'SDK is not enabled or survey functionality is not yet loaded',
+                disabledReason: SURVEY_NOT_LOADED,
             })
         }
 

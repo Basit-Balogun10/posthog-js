@@ -1,5 +1,837 @@
 # posthog-js
 
+## 1.364.4
+
+### Patch Changes
+
+- [#3298](https://github.com/PostHog/posthog-js/pull/3298) [`2365df5`](https://github.com/PostHog/posthog-js/commit/2365df5c420fb88dccb74c85beeb058be92eb66e) Thanks [@TueHaulund](https://github.com/TueHaulund)! - fix: skip deep copy for snapshot/exception events to prevent stack overflow on deeply nested DOM trees
+  (2026-03-31)
+- Updated dependencies []:
+    - @posthog/types@1.364.4
+
+## 1.364.3
+
+### Patch Changes
+
+- [#3300](https://github.com/PostHog/posthog-js/pull/3300) [`bab5f3a`](https://github.com/PostHog/posthog-js/commit/bab5f3a0c061dc48c2b573136c03758a3ba3c301) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - Strip workspace:\* references from lib/package.json after build
+  (2026-03-31)
+- Updated dependencies []:
+    - @posthog/types@1.364.3
+
+## 1.364.2
+
+### Patch Changes
+
+- [#3297](https://github.com/PostHog/posthog-js/pull/3297) [`341caaf`](https://github.com/PostHog/posthog-js/commit/341caaf627d752b35a3b9461a8b1f1fd532f306f) Thanks [@marandaneto](https://github.com/marandaneto)! - fix: wrap sendBeacon body in Blob to ensure Content-Type header is set
+  (2026-03-30)
+- Updated dependencies [[`a863914`](https://github.com/PostHog/posthog-js/commit/a863914bca09643f2aef7ca029b96de9cbfbc24c)]:
+    - @posthog/core@1.24.4
+    - @posthog/types@1.364.2
+
+## 1.364.1
+
+### Patch Changes
+
+- Updated dependencies [[`4bdfdbc`](https://github.com/PostHog/posthog-js/commit/4bdfdbcfe6a5600664a609a6b17c7d7cb72cd20f)]:
+    - @posthog/core@1.24.3
+    - @posthog/types@1.364.1
+
+## 1.364.0
+
+### Minor Changes
+
+- [#3285](https://github.com/PostHog/posthog-js/pull/3285) [`00a5079`](https://github.com/PostHog/posthog-js/commit/00a50795a16e9274fc6b4ea642b4a5e270f07222) Thanks [@pauldambra](https://github.com/pauldambra)! - Reject the strings "undefined" and "null" in posthog.identify(). All invalid distinct IDs now log a critical console error (always visible, not debug-only).
+  (2026-03-27)
+
+### Patch Changes
+
+- [#3286](https://github.com/PostHog/posthog-js/pull/3286) [`8d34289`](https://github.com/PostHog/posthog-js/commit/8d34289f7cf91945223eed4366b11fb187a63a40) Thanks [@marandaneto](https://github.com/marandaneto)! - Use async native CompressionStream for gzip compression to avoid blocking the main thread
+  (2026-03-27)
+- Updated dependencies [[`8d34289`](https://github.com/PostHog/posthog-js/commit/8d34289f7cf91945223eed4366b11fb187a63a40)]:
+    - @posthog/core@1.24.2
+    - @posthog/types@1.364.0
+
+## 1.363.6
+
+### Patch Changes
+
+- [#3279](https://github.com/PostHog/posthog-js/pull/3279) [`32edaad`](https://github.com/PostHog/posthog-js/commit/32edaadd509e32a3a679142ccb704fd9e404d1a2) Thanks [@pauldambra](https://github.com/pauldambra)! - Bump @posthog/rrweb packages to 0.0.51, which includes:
+    - PostHog/posthog-rrweb#145: fix: handle cross-origin iframe errors during stop handler cleanup
+    - PostHog/posthog-rrweb#148: fix: mask textarea innerText mutations
+    - PostHog/posthog-rrweb#150: fix: guard WebGLRenderingContext access for iOS compatibility
+    - PostHog/posthog-rrweb#151: refactor: extract slimDOMDefaults into shared function
+    - PostHog/posthog-rrweb#152: fix: improve nested CSS rule handling
+    - PostHog/posthog-rrweb#153: fix: allow clearing adopted stylesheets with empty strings
+    - PostHog/posthog-rrweb#154: fix: prevent object reference mutation breaking remote CSS replay
+    - PostHog/posthog-rrweb#156: fix: catch all SecurityError variants in stop handler cleanup (2026-03-26)
+- Updated dependencies []:
+    - @posthog/types@1.363.6
+
+## 1.363.5
+
+### Patch Changes
+
+- [#3278](https://github.com/PostHog/posthog-js/pull/3278) [`c59dc90`](https://github.com/PostHog/posthog-js/commit/c59dc90e167f2e1dc3fc4e53d2d716f9dc5e3c70) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - Add tree-shakeable ESM extension-bundles entry point for slim builds
+  (2026-03-25)
+
+- [#3274](https://github.com/PostHog/posthog-js/pull/3274) [`ba08262`](https://github.com/PostHog/posthog-js/commit/ba08262a0bcf4ae1db3ef3bb841e0ad07002fbea) Thanks [@pauldambra](https://github.com/pauldambra)! - fix: document visibility change shoudln't capture dead click
+  (2026-03-25)
+- Updated dependencies [[`ba08262`](https://github.com/PostHog/posthog-js/commit/ba08262a0bcf4ae1db3ef3bb841e0ad07002fbea)]:
+    - @posthog/types@1.363.5
+
+## 1.363.4
+
+### Patch Changes
+
+- [#3275](https://github.com/PostHog/posthog-js/pull/3275) [`664a11b`](https://github.com/PostHog/posthog-js/commit/664a11b083cf0a92630676207abb52aeb6a7c1e9) Thanks [@fasyy612](https://github.com/fasyy612)! - bump rrweb dependency version
+  (2026-03-24)
+- Updated dependencies []:
+    - @posthog/types@1.363.4
+
+## 1.363.3
+
+### Patch Changes
+
+- [#3253](https://github.com/PostHog/posthog-js/pull/3253) [`42fbd41`](https://github.com/PostHog/posthog-js/commit/42fbd4190ac4c4ce850158407512d15fa2e590c8) Thanks [@marandaneto](https://github.com/marandaneto)! - Reduce browser SDK bundle size by ~6.6 KB (-3.7%) through code modernization, build config tuning, string deduplication, enum-to-const conversions, and property access shorthand getters.
+  (2026-03-23)
+- Updated dependencies []:
+    - @posthog/types@1.363.3
+
+## 1.363.2
+
+### Patch Changes
+
+- [#3267](https://github.com/PostHog/posthog-js/pull/3267) [`e5ef520`](https://github.com/PostHog/posthog-js/commit/e5ef5201bf764aac11a765549f9561010d3b4329) Thanks [@ksvat](https://github.com/ksvat)! - bump rrweb dependency version
+  (2026-03-23)
+
+- [#3260](https://github.com/PostHog/posthog-js/pull/3260) [`1435ec8`](https://github.com/PostHog/posthog-js/commit/1435ec8bb64dd6ac8f5359630b7f01b051cc5fe6) Thanks [@kyleswank](https://github.com/kyleswank)! - Log warning instead of throwing error when session recording script is blocked by ad blockers
+  (2026-03-23)
+- Updated dependencies []:
+    - @posthog/types@1.363.2
+
+## 1.363.1
+
+### Patch Changes
+
+- Updated dependencies [[`314120a`](https://github.com/PostHog/posthog-js/commit/314120aa2377b3c8031dd774833fe9082ecdbd39)]:
+    - @posthog/core@1.24.1
+    - @posthog/types@1.363.1
+
+## 1.363.0
+
+### Minor Changes
+
+- [#3247](https://github.com/PostHog/posthog-js/pull/3247) [`7efa558`](https://github.com/PostHog/posthog-js/commit/7efa558fa0a5e3355d4f3c7974ec20b6a1b810b4) Thanks [@dmarticus](https://github.com/dmarticus)! - prevent silent identity switch during bootstrap and auto-identify anonymous users
+  (2026-03-20)
+
+### Patch Changes
+
+- [#3245](https://github.com/PostHog/posthog-js/pull/3245) [`1acd6fd`](https://github.com/PostHog/posthog-js/commit/1acd6fdfaaa46da71ca15bba2916c3bb81c3e7ef) Thanks [@dmarticus](https://github.com/dmarticus)! - handle plain array and object forms in overrideFeatureFlags
+  (2026-03-20)
+- Updated dependencies [[`1acd6fd`](https://github.com/PostHog/posthog-js/commit/1acd6fdfaaa46da71ca15bba2916c3bb81c3e7ef)]:
+    - @posthog/types@1.363.0
+
+## 1.362.0
+
+### Minor Changes
+
+- [#3244](https://github.com/PostHog/posthog-js/pull/3244) [`ff8a93e`](https://github.com/PostHog/posthog-js/commit/ff8a93e99bb9bab98d02074d84973430d279a29d) Thanks [@sampennington](https://github.com/sampennington)! - Fixed $set_once initial person properties (e.g. $initial_current_url) not being included with $identify calls when they had already been sent with a prior event. This ensures initial properties are reliably set when identifying users across subdomains, even if an anonymous event was captured first.
+  (2026-03-18)
+
+### Patch Changes
+
+- Updated dependencies [[`9cd2313`](https://github.com/PostHog/posthog-js/commit/9cd23138343e1020811f85853d6016cc985bb24f)]:
+    - @posthog/core@1.24.0
+    - @posthog/types@1.362.0
+
+## 1.361.1
+
+### Patch Changes
+
+- [#3249](https://github.com/PostHog/posthog-js/pull/3249) [`c265d62`](https://github.com/PostHog/posthog-js/commit/c265d6207c43986d0599ad2464df53e2b813f08c) Thanks [@marandaneto](https://github.com/marandaneto)! - fix: preserve `_overrideSDKInfo` from terser mangling so wrapper SDKs can call it
+  (2026-03-18)
+- Updated dependencies []:
+    - @posthog/types@1.361.1
+
+## 1.361.0
+
+### Minor Changes
+
+- [#3201](https://github.com/PostHog/posthog-js/pull/3201) [`552c018`](https://github.com/PostHog/posthog-js/commit/552c01843b9ae1fbf8fdf1a2e98e0b7fdc37c851) Thanks [@frankh](https://github.com/frankh)! - Add a serviceName config option to logs config
+  (2026-03-18)
+
+- [#3240](https://github.com/PostHog/posthog-js/pull/3240) [`e4a58d0`](https://github.com/PostHog/posthog-js/commit/e4a58d0a071c7605a69ae4492efd895cd50047bd) Thanks [@marandaneto](https://github.com/marandaneto)! - Add internal `_overrideSDKInfo` method to allow wrapper SDKs to override `$lib` and `$lib_version` event properties
+  (2026-03-18)
+
+- [#3241](https://github.com/PostHog/posthog-js/pull/3241) [`fe1fd7b`](https://github.com/PostHog/posthog-js/commit/fe1fd7b222b2ca51164e01fceca892628efac89c) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - feat: add `advanced_feature_flags_dedup_per_session` config option to scope `$feature_flag_called` deduplication to the current session
+  (2026-03-18)
+
+### Patch Changes
+
+- [#3239](https://github.com/PostHog/posthog-js/pull/3239) [`bf4f078`](https://github.com/PostHog/posthog-js/commit/bf4f078096c506906afecb1dbe9fc31100900a0f) Thanks [@jonathanlab](https://github.com/jonathanlab)! - fix: debug mode not persisting across page navigations
+  (2026-03-18)
+
+- [#3228](https://github.com/PostHog/posthog-js/pull/3228) [`8773fdf`](https://github.com/PostHog/posthog-js/commit/8773fdfdb87980da3db1f141099577424b35153b) Thanks [@TueHaulund](https://github.com/TueHaulund)! - fix: restart session recorder when session rotates externally while idle, preventing "Recording not found" for sessions where analytics events triggered session rotation
+  (2026-03-18)
+- Updated dependencies [[`552c018`](https://github.com/PostHog/posthog-js/commit/552c01843b9ae1fbf8fdf1a2e98e0b7fdc37c851), [`fe1fd7b`](https://github.com/PostHog/posthog-js/commit/fe1fd7b222b2ca51164e01fceca892628efac89c)]:
+    - @posthog/types@1.361.0
+
+## 1.360.2
+
+### Patch Changes
+
+- [#3236](https://github.com/PostHog/posthog-js/pull/3236) [`bc30c2d`](https://github.com/PostHog/posthog-js/commit/bc30c2d988bb307e811d97711f208c125eefba3a) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix: Calling reset() now automatically reloads feature flags
+  (2026-03-13)
+- Updated dependencies [[`bc30c2d`](https://github.com/PostHog/posthog-js/commit/bc30c2d988bb307e811d97711f208c125eefba3a), [`bc30c2d`](https://github.com/PostHog/posthog-js/commit/bc30c2d988bb307e811d97711f208c125eefba3a)]:
+    - @posthog/core@1.23.4
+    - @posthog/types@1.360.2
+
+## 1.360.1
+
+### Patch Changes
+
+- Updated dependencies [[`4009c15`](https://github.com/PostHog/posthog-js/commit/4009c15c85c96b5cf99fdbcda448b9893c95541e)]:
+    - @posthog/core@1.23.3
+    - @posthog/types@1.360.1
+
+## 1.360.0
+
+### Patch Changes
+
+- [#3213](https://github.com/PostHog/posthog-js/pull/3213) [`db089fd`](https://github.com/PostHog/posthog-js/commit/db089fd81f35a9c5e825c43853a870a17c916ce0) Thanks [@TueHaulund](https://github.com/TueHaulund)! - fix(replay): treat legacy configs without cache_timestamp as fresh
+
+    Configs persisted by older SDK versions never include a cache_timestamp.
+    Defaulting to 0 treats them as always stale, causing the persisted config
+    to be cleared before start() runs — so recording never starts for
+    customers on older core SDK versions paired with the latest CDN recorder. (2026-03-09)
+
+- [#3207](https://github.com/PostHog/posthog-js/pull/3207) [`c5a37cb`](https://github.com/PostHog/posthog-js/commit/c5a37cbc248515ff5333f425ffa270136169d47f) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix: PostHogFeatureFlags uses a TreeShakeable<T> type
+  (2026-03-09)
+- Updated dependencies [[`c5a37cb`](https://github.com/PostHog/posthog-js/commit/c5a37cbc248515ff5333f425ffa270136169d47f)]:
+    - @posthog/types@1.360.0
+
+## 1.359.1
+
+### Patch Changes
+
+- [#3204](https://github.com/PostHog/posthog-js/pull/3204) [`2b0cd52`](https://github.com/PostHog/posthog-js/commit/2b0cd52bac03b50322c497eb1f2fd070e54c83b4) Thanks [@marandaneto](https://github.com/marandaneto)! - chore: upgrade dompurify to 3.3.2
+  (2026-03-06)
+- Updated dependencies []:
+    - @posthog/types@1.359.1
+
+## 1.359.0
+
+### Minor Changes
+
+- [#3166](https://github.com/PostHog/posthog-js/pull/3166) [`9180726`](https://github.com/PostHog/posthog-js/commit/91807266924dd6bf4689d94f1480158c38ec7ca3) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - feat: Tree-shake feature flags
+  (2026-03-05)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.359.0
+
+## 1.358.1
+
+### Patch Changes
+
+- [#3191](https://github.com/PostHog/posthog-js/pull/3191) [`9f41d26`](https://github.com/PostHog/posthog-js/commit/9f41d26d460d1dae557a37a1bec9575a785322e9) Thanks [@TueHaulund](https://github.com/TueHaulund)! - fix(replay): fall back to persisted config when remote config fetch fails
+
+    When the remote config fetch failed (network error, ad blocker, CDN outage), the SDK received an empty `{}` response with no `sessionRecording` key. The `onRemoteConfig` handler returned early without ever setting `_receivedFlags = true`, leaving the recording permanently stuck in `pending_config` status for the entire page session.
+
+    This removes the `_receivedFlags` gate entirely. The 1-hour TTL on persisted config (added in #3051, increased from 5 minutes) and the stale-config retry in `_onScriptLoaded` (added in #3093) already prevent recording from starting with outdated config. The additional gate was redundant and created a deadlock when the config fetch failed.
+
+    Now when the config fetch fails, `startIfEnabledOrStop()` is called and falls back to persisted config from a previous page load. If no persisted config exists (first-ever visit), recording is correctly disabled rather than silently stuck. (2026-03-04)
+
+- [#3198](https://github.com/PostHog/posthog-js/pull/3198) [`9d0df0e`](https://github.com/PostHog/posthog-js/commit/9d0df0e9fe9b2439526d730df0e2cb7cd4868fee) Thanks [@TueHaulund](https://github.com/TueHaulund)! - Reduce session replay memory pressure by tracking per-event sizes in SnapshotBuffer, eliminating redundant JSON.stringify calls during buffer operations. Also bumps @posthog/rrweb to 0.0.46 which uses FNV-1a hash-based canvas frame deduplication instead of storing full base64 strings.
+  (2026-03-04)
+- Updated dependencies []:
+    - @posthog/types@1.358.1
+
+## 1.358.0
+
+### Minor Changes
+
+- [#3165](https://github.com/PostHog/posthog-js/pull/3165) [`0e08337`](https://github.com/PostHog/posthog-js/commit/0e083378a1ee9133427b40b0a9350f7cfc902244) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - feat: Tree-shake surveys, toolbar, exceptions, conversations, logs, experiments
+  (2026-03-03)
+
+### Patch Changes
+
+- [#3164](https://github.com/PostHog/posthog-js/pull/3164) [`20c1ff2`](https://github.com/PostHog/posthog-js/commit/20c1ff2ac07705303aaf329a5b0143e89adec453) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - Add Extension interface for tree-shakable extensions
+  (2026-03-03)
+- Updated dependencies []:
+    - @posthog/types@1.358.0
+
+## 1.357.2
+
+### Patch Changes
+
+- [#3170](https://github.com/PostHog/posthog-js/pull/3170) [`f485c92`](https://github.com/PostHog/posthog-js/commit/f485c9217d17aae68ceb257420463946163d0060) Thanks [@slshults](https://github.com/slshults)! - fix: Move tablet detection logic into detectDeviceType for consistent classification across all call sites
+  (2026-03-03)
+- Updated dependencies []:
+    - @posthog/types@1.357.2
+
+## 1.357.1
+
+### Patch Changes
+
+- [#3149](https://github.com/PostHog/posthog-js/pull/3149) [`91223c5`](https://github.com/PostHog/posthog-js/commit/91223c5577c1dc6baf02c39ae708d840ff0ffcea) Thanks [@adboio](https://github.com/adboio)! - avoid re-checking URLs if they have not changed
+  (2026-03-02)
+- Updated dependencies [[`5e8d5fc`](https://github.com/PostHog/posthog-js/commit/5e8d5fc9c12e5545e015c9c5556167b9fb279347)]:
+    - @posthog/core@1.23.2
+    - @posthog/types@1.357.1
+
+## 1.357.0
+
+### Minor Changes
+
+- [#3169](https://github.com/PostHog/posthog-js/pull/3169) [`4f885c0`](https://github.com/PostHog/posthog-js/commit/4f885c067f3e46398629f4163a204206e71d4757) Thanks [@marandaneto](https://github.com/marandaneto)! - feat: add local sampleRate config for session recording
+  (2026-03-02)
+
+### Patch Changes
+
+- [#3179](https://github.com/PostHog/posthog-js/pull/3179) [`0dce119`](https://github.com/PostHog/posthog-js/commit/0dce11905e62737033f59294252f5f390212cf33) Thanks [@TueHaulund](https://github.com/TueHaulund)! - Bump @posthog/rrweb-\* to 0.0.45 — reuses a single OffscreenCanvas in the canvas recording worker instead of allocating a new one per frame, fixing a memory leak in Safari where GPU-backed canvas resources were not being garbage collected promptly
+  (2026-03-02)
+- Updated dependencies [[`4f885c0`](https://github.com/PostHog/posthog-js/commit/4f885c067f3e46398629f4163a204206e71d4757)]:
+    - @posthog/types@1.357.0
+
+## 1.356.2
+
+### Patch Changes
+
+- [#3174](https://github.com/PostHog/posthog-js/pull/3174) [`e9127d8`](https://github.com/PostHog/posthog-js/commit/e9127d8d98f21886d1ca2f3b193a443c7a837b5f) Thanks [@TueHaulund](https://github.com/TueHaulund)! - Detect and report when rrweb fails to initialize. rrweb's `record()` silently swallows startup errors and returns `undefined`, which previously left the SDK reporting an active recording status while capturing zero data. The SDK now checks the return value and reports a new `rrweb_error` status, making the failure visible in debug properties.
+  (2026-03-02)
+
+- [#3175](https://github.com/PostHog/posthog-js/pull/3175) [`6ee5f12`](https://github.com/PostHog/posthog-js/commit/6ee5f12254f8504ea317d587ba9244775f0e4344) Thanks [@TueHaulund](https://github.com/TueHaulund)! - Fix memory leak in canvas recording on Safari < 16.4 where ImageBitmaps were never closed when OffscreenCanvas was unavailable in the web worker.
+  (2026-03-02)
+
+- [#3178](https://github.com/PostHog/posthog-js/pull/3178) [`186871a`](https://github.com/PostHog/posthog-js/commit/186871a277928a4c6ad010fc9b2ea6525cc3f61e) Thanks [@TueHaulund](https://github.com/TueHaulund)! - Skip canvas FPS recording entirely on browsers without OffscreenCanvas support (Safari < 16.4) instead of running a wasteful requestAnimationFrame loop that can never produce data. Also includes displayWidth/displayHeight in canvas mutation data for correct replay sizing.
+  (2026-03-02)
+
+- [#3176](https://github.com/PostHog/posthog-js/pull/3176) [`87bae20`](https://github.com/PostHog/posthog-js/commit/87bae20a1ff9a7153a699e8e81de3ea16db2541e) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix: Drop explicit exports
+  (2026-03-02)
+
+- [#3172](https://github.com/PostHog/posthog-js/pull/3172) [`2e46959`](https://github.com/PostHog/posthog-js/commit/2e46959e3b88a6571d1a0e60cdd0ef5a2db1a02b) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix: Compressed requests use ArrayBuffer
+  (2026-03-02)
+- Updated dependencies []:
+    - @posthog/types@1.356.2
+
+## 1.356.1
+
+### Patch Changes
+
+- [#3128](https://github.com/PostHog/posthog-js/pull/3128) [`a500d14`](https://github.com/PostHog/posthog-js/commit/a500d141a13cee832b75e58e92f2239b9df9c6a7) Thanks [@ksvat](https://github.com/ksvat)! - wait for fresh config before recording start decision, add new recorder status, output recording started event
+  (2026-02-27)
+- Updated dependencies []:
+    - @posthog/types@1.356.1
+
+## 1.356.0
+
+### Minor Changes
+
+- [#3142](https://github.com/PostHog/posthog-js/pull/3142) [`ec54fd8`](https://github.com/PostHog/posthog-js/commit/ec54fd8fcfda496879e456361fb97de504063393) Thanks [@dmarticus](https://github.com/dmarticus)! - Add feature_flag_cache_ttl_ms config to prevent stale flag values
+  (2026-02-26)
+
+### Patch Changes
+
+- [#3154](https://github.com/PostHog/posthog-js/pull/3154) [`a47179c`](https://github.com/PostHog/posthog-js/commit/a47179c1d007d17e2f65848c98b66cba2b706e65) Thanks [@slshults](https://github.com/slshults)! - fix: Improve tablet device type detection when Chrome sends desktop-like UA strings
+
+    Chrome on Android tablets defaults to "request desktop site" mode, sending a UA string
+    indistinguishable from desktop Linux. This uses the Client Hints API (navigator.userAgentData.platform)
+    and touch capability (navigator.maxTouchPoints) to correctly classify these devices as Tablet or Mobile
+    when UA-based detection falls through to the Desktop default. (2026-02-26)
+
+- [#3145](https://github.com/PostHog/posthog-js/pull/3145) [`d741668`](https://github.com/PostHog/posthog-js/commit/d741668f6f966c729308d3b71fd7deebe16411f0) Thanks [@dmarticus](https://github.com/dmarticus)! - Adds a remote_config_refresh_interval_ms config option to control how often feature flags are automatically refreshed in long-running sessions.
+  (2026-02-26)
+- Updated dependencies [[`ec54fd8`](https://github.com/PostHog/posthog-js/commit/ec54fd8fcfda496879e456361fb97de504063393), [`d741668`](https://github.com/PostHog/posthog-js/commit/d741668f6f966c729308d3b71fd7deebe16411f0)]:
+    - @posthog/types@1.356.0
+
+## 1.355.0
+
+### Minor Changes
+
+- [#3109](https://github.com/PostHog/posthog-js/pull/3109) [`1d3f14c`](https://github.com/PostHog/posthog-js/commit/1d3f14cadfe49a83d70d1efd778c1a24268b0f4f) Thanks [@adboio](https://github.com/adboio)! - add product tour wait period support
+  (2026-02-26)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.355.0
+
+## 1.354.4
+
+### Patch Changes
+
+- [#3152](https://github.com/PostHog/posthog-js/pull/3152) [`d6fd9c9`](https://github.com/PostHog/posthog-js/commit/d6fd9c9c60564da2b095e6b83100a45676ea0f12) Thanks [@ksvat](https://github.com/ksvat)! - add re-entrancy guard for cases where ALL + regex + event trigger matching is configured
+  (2026-02-26)
+- Updated dependencies []:
+    - @posthog/types@1.354.4
+
+## 1.354.3
+
+### Patch Changes
+
+- [#3113](https://github.com/PostHog/posthog-js/pull/3113) [`77261d8`](https://github.com/PostHog/posthog-js/commit/77261d8a27e64e2f7b80db60a25616e9f1aa0959) Thanks [@adboio](https://github.com/adboio)! - add product tours device type targeting
+  (2026-02-25)
+- Updated dependencies []:
+    - @posthog/types@1.354.3
+
+## 1.354.2
+
+### Patch Changes
+
+- [#3153](https://github.com/PostHog/posthog-js/pull/3153) [`67cf41e`](https://github.com/PostHog/posthog-js/commit/67cf41e10cdca853b39f37d8b16b5dee37e0283a) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix: Add additional legacy exports for fully qualified dist and lib exports
+  (2026-02-25)
+- Updated dependencies []:
+    - @posthog/types@1.354.2
+
+## 1.354.1
+
+### Patch Changes
+
+- [#3148](https://github.com/PostHog/posthog-js/pull/3148) [`9ae20e7`](https://github.com/PostHog/posthog-js/commit/9ae20e7cde5d474da1d52ae3b77929b4f4adb54e) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix: Expose all export paths
+  (2026-02-25)
+- Updated dependencies []:
+    - @posthog/types@1.354.1
+
+## 1.354.0
+
+### Minor Changes
+
+- [#3080](https://github.com/PostHog/posthog-js/pull/3080) [`4d0c783`](https://github.com/PostHog/posthog-js/commit/4d0c783fadac64718da01d1773a65f1d350f8201) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - feat: Introduce internal config to improve tree-shaking
+  (2026-02-25)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.354.0
+
+## 1.353.1
+
+### Patch Changes
+
+- [#3143](https://github.com/PostHog/posthog-js/pull/3143) [`0b86924`](https://github.com/PostHog/posthog-js/commit/0b86924ac25445686618cf36c2bfe58f1bcee9e7) Thanks [@adboio](https://github.com/adboio)! - fix autofill bug in hosted surveys
+  (2026-02-24)
+- Updated dependencies []:
+    - @posthog/types@1.353.1
+
+## 1.353.0
+
+### Minor Changes
+
+- [#3135](https://github.com/PostHog/posthog-js/pull/3135) [`fba7e5b`](https://github.com/PostHog/posthog-js/commit/fba7e5bcf67d3a7e5b55b6bb95a0dcb637f56f6a) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - feat: Persist $user_state to cookie for server-side access
+  (2026-02-23)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.353.0
+
+## 1.352.1
+
+### Patch Changes
+
+- [#3129](https://github.com/PostHog/posthog-js/pull/3129) [`6bfa003`](https://github.com/PostHog/posthog-js/commit/6bfa003116aa8ef65fe605c29ffee711f4d39b74) Thanks [@pauldambra](https://github.com/pauldambra)! - fix: no need to put rrweb and friends directly on window in posthog-recorder
+  (2026-02-23)
+
+- [#3131](https://github.com/PostHog/posthog-js/pull/3131) [`ad26474`](https://github.com/PostHog/posthog-js/commit/ad26474d8964798ee3e10b6cfdf14f1cbd0969ac) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Fix issue with toolbar interferring distinct id in conversations
+  (2026-02-23)
+- Updated dependencies []:
+    - @posthog/types@1.352.1
+
+## 1.352.0
+
+### Minor Changes
+
+- [#3121](https://github.com/PostHog/posthog-js/pull/3121) [`c3c9780`](https://github.com/PostHog/posthog-js/commit/c3c978053bda3466df47e244ec05812aecd01f1f) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Ability to retrieve previous conversations
+  (2026-02-20)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.352.0
+
+## 1.351.4
+
+### Patch Changes
+
+- [#3119](https://github.com/PostHog/posthog-js/pull/3119) [`2649a9a`](https://github.com/PostHog/posthog-js/commit/2649a9a6eeef19c67036c1298b5b5b6ba61eda8e) Thanks [@dmarticus](https://github.com/dmarticus)! - Adds a fresh option to getFeatureFlag(), getFeatureFlagResult(), and isFeatureEnabled() that only returns values loaded from the server, not cached localStorage values.
+  (2026-02-19)
+- Updated dependencies [[`2649a9a`](https://github.com/PostHog/posthog-js/commit/2649a9a6eeef19c67036c1298b5b5b6ba61eda8e)]:
+    - @posthog/types@1.351.4
+
+## 1.351.3
+
+### Patch Changes
+
+- [#3098](https://github.com/PostHog/posthog-js/pull/3098) [`1a53e8c`](https://github.com/PostHog/posthog-js/commit/1a53e8c7042575905e9fd9efa7b336c51f110e60) Thanks [@adboio](https://github.com/adboio)! - add animation option for tour banners
+  (2026-02-19)
+- Updated dependencies []:
+    - @posthog/types@1.351.3
+
+## 1.351.2
+
+### Patch Changes
+
+- [#3096](https://github.com/PostHog/posthog-js/pull/3096) [`d964a31`](https://github.com/PostHog/posthog-js/commit/d964a31414cbf5358e22af1e383ba44e1801ccdb) Thanks [@adboio](https://github.com/adboio)! - add banner click tracking for tours
+  (2026-02-19)
+- Updated dependencies []:
+    - @posthog/types@1.351.2
+
+## 1.351.1
+
+### Patch Changes
+
+- [#3112](https://github.com/PostHog/posthog-js/pull/3112) [`c0b911d`](https://github.com/PostHog/posthog-js/commit/c0b911da06333e4fbc153c7ccaec5552127cc78b) Thanks [@adboio](https://github.com/adboio)! - prevent infinite recursion bug with 3rd party proxy on posthog
+  (2026-02-18)
+- Updated dependencies []:
+    - @posthog/types@1.351.1
+
+## 1.351.0
+
+### Minor Changes
+
+- [#3115](https://github.com/PostHog/posthog-js/pull/3115) [`8655261`](https://github.com/PostHog/posthog-js/commit/8655261ad362c0001f1c86a5330b634421143733) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Strip markdown in tickets list
+  (2026-02-18)
+
+### Patch Changes
+
+- [#3107](https://github.com/PostHog/posthog-js/pull/3107) [`9dbc05e`](https://github.com/PostHog/posthog-js/commit/9dbc05ed65ddc8c37c9262b9aebfc51d0c748971) Thanks [@ablaszkiewicz](https://github.com/ablaszkiewicz)! - warning on manual capture('$exception')
+  (2026-02-18)
+- Updated dependencies [[`9dbc05e`](https://github.com/PostHog/posthog-js/commit/9dbc05ed65ddc8c37c9262b9aebfc51d0c748971)]:
+    - @posthog/types@1.351.0
+    - @posthog/core@1.23.1
+
+## 1.350.0
+
+### Minor Changes
+
+- [#2895](https://github.com/PostHog/posthog-js/pull/2895) [`1b47203`](https://github.com/PostHog/posthog-js/commit/1b47203a5cc1b8f76e224101975e462cd777e2ee) Thanks [@benjackwhite](https://github.com/benjackwhite)! - RemoteConfig (config.js) has been loaded for ages and is in use by us in production. This PR makes it the sole config loading mechanism for posthog-js, removing the legacy /flags/?v=2&config=true path and the \_\_preview_remote_config gate.
+  (2026-02-17)
+
+### Patch Changes
+
+- Updated dependencies [[`1b47203`](https://github.com/PostHog/posthog-js/commit/1b47203a5cc1b8f76e224101975e462cd777e2ee)]:
+    - @posthog/types@1.350.0
+
+## 1.349.0
+
+### Minor Changes
+
+- [#3105](https://github.com/PostHog/posthog-js/pull/3105) [`f707ec9`](https://github.com/PostHog/posthog-js/commit/f707ec95e4b718bffe48e3e6be9afbc855b39f8f) Thanks [@adboio](https://github.com/adboio)! - add support for product tours localization
+  (2026-02-17)
+
+### Patch Changes
+
+- Updated dependencies [[`f707ec9`](https://github.com/PostHog/posthog-js/commit/f707ec95e4b718bffe48e3e6be9afbc855b39f8f)]:
+    - @posthog/types@1.349.0
+
+## 1.348.0
+
+### Minor Changes
+
+- [#3108](https://github.com/PostHog/posthog-js/pull/3108) [`c4ca045`](https://github.com/PostHog/posthog-js/commit/c4ca0450e6bbd39e7e90c442776ba0cf0b848ce4) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Support multiple tickets
+  (2026-02-17)
+
+### Patch Changes
+
+- [#3104](https://github.com/PostHog/posthog-js/pull/3104) [`b11c3c5`](https://github.com/PostHog/posthog-js/commit/b11c3c58fe14121cda89bc48aeabf817ae44a8d0) Thanks [@adboio](https://github.com/adboio)! - support customizable survey step button texts in product tours
+  (2026-02-17)
+
+- [#3081](https://github.com/PostHog/posthog-js/pull/3081) [`d36a6ed`](https://github.com/PostHog/posthog-js/commit/d36a6ed75c68742b07863fed0e7a64ad3f842c8d) Thanks [@adboio](https://github.com/adboio)! - move tour event names to constants
+  (2026-02-17)
+- Updated dependencies [[`e962f01`](https://github.com/PostHog/posthog-js/commit/e962f01c80476b9325f0bbb4ca591820cfb9f338)]:
+    - @posthog/core@1.23.0
+    - @posthog/types@1.348.0
+
+## 1.347.2
+
+### Patch Changes
+
+- [#3094](https://github.com/PostHog/posthog-js/pull/3094) [`0d30218`](https://github.com/PostHog/posthog-js/commit/0d30218b3087f27104408e873a3421e3ba27633d) Thanks [@TueHaulund](https://github.com/TueHaulund)! - feat(replay): add $snapshot_max_depth_exceeded debug property and bump rrweb to 0.0.42 with DOM depth limit
+  (2026-02-13)
+
+- [#3093](https://github.com/PostHog/posthog-js/pull/3093) [`f19b7f2`](https://github.com/PostHog/posthog-js/commit/f19b7f2df37d24b81f57477497f21196006b72e7) Thanks [@TueHaulund](https://github.com/TueHaulund)! - fix(replay): retry session recording start when persisted remote config is stale
+  (2026-02-13)
+- Updated dependencies []:
+    - @posthog/types@1.347.2
+
+## 1.347.1
+
+### Patch Changes
+
+- [#3090](https://github.com/PostHog/posthog-js/pull/3090) [`312b785`](https://github.com/PostHog/posthog-js/commit/312b78520c68d02efd7b2f22ca3ed4c30911b045) Thanks [@adboio](https://github.com/adboio)! - enable product tour image preload
+  (2026-02-13)
+- Updated dependencies []:
+    - @posthog/types@1.347.1
+
+## 1.347.0
+
+### Minor Changes
+
+- [#3087](https://github.com/PostHog/posthog-js/pull/3087) [`512d578`](https://github.com/PostHog/posthog-js/commit/512d5785488a4fb507ef1edf2a5b1788e8c17e86) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix: Revert tree shaking configuration
+  (2026-02-12)
+
+### Patch Changes
+
+- [#3079](https://github.com/PostHog/posthog-js/pull/3079) [`9c078ac`](https://github.com/PostHog/posthog-js/commit/9c078ac771d09ad2e9df3c796cc4be01d949a806) Thanks [@adboio](https://github.com/adboio)! - update z-index hierarchy for tours > surveys > conversations
+  (2026-02-12)
+- Updated dependencies []:
+    - @posthog/types@1.347.0
+
+## 1.346.0
+
+### Minor Changes
+
+- [#3082](https://github.com/PostHog/posthog-js/pull/3082) [`0d730bd`](https://github.com/PostHog/posthog-js/commit/0d730bd8d6786bf9dc5a818caaa47e378531bd0c) Thanks [@adboio](https://github.com/adboio)! - enable tours by default
+  (2026-02-12)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.346.0
+
+## 1.345.5
+
+### Patch Changes
+
+- [#3060](https://github.com/PostHog/posthog-js/pull/3060) [`7437982`](https://github.com/PostHog/posthog-js/commit/7437982efa2c7a7a9ede563ddd97beba5c70d650) Thanks [@pauldambra](https://github.com/pauldambra)! - Add missing `featureFlags` property and `OverrideFeatureFlagsOptions` type to `PostHog` interface, restore `set_config` to the loaded callback type, and add `featureFlagsReloading` to `on()` event types
+  (2026-02-11)
+- Updated dependencies [[`7437982`](https://github.com/PostHog/posthog-js/commit/7437982efa2c7a7a9ede563ddd97beba5c70d650)]:
+    - @posthog/types@1.345.5
+
+## 1.345.4
+
+### Patch Changes
+
+- [#3074](https://github.com/PostHog/posthog-js/pull/3074) [`4e7fda9`](https://github.com/PostHog/posthog-js/commit/4e7fda93be4fe2afbbe9d11dd9b1b6517a37573d) Thanks [@marandaneto](https://github.com/marandaneto)! - fix: session replay respects the network_timing remote config
+  (2026-02-11)
+- Updated dependencies []:
+    - @posthog/types@1.345.4
+
+## 1.345.3
+
+### Patch Changes
+
+- [#3064](https://github.com/PostHog/posthog-js/pull/3064) [`50ebdfb`](https://github.com/PostHog/posthog-js/commit/50ebdfb26306bdaaeaa081fb4b3722030e3c4378) Thanks [@jordanm-posthog](https://github.com/jordanm-posthog)! - Fixed an issue where Dead Clicks could continue being captured after being disabled via remote config.
+  (2026-02-10)
+- Updated dependencies [[`0acf16f`](https://github.com/PostHog/posthog-js/commit/0acf16fcbf8c32d5f28b86b6fa200271ad0b647e)]:
+    - @posthog/core@1.22.0
+    - @posthog/types@1.345.3
+
+## 1.345.2
+
+### Patch Changes
+
+- [#3067](https://github.com/PostHog/posthog-js/pull/3067) [`4580975`](https://github.com/PostHog/posthog-js/commit/4580975b499069a60567e2844cfb0d8970ca641d) Thanks [@adboio](https://github.com/adboio)! - add "product tour button clicked" events
+  (2026-02-10)
+- Updated dependencies []:
+    - @posthog/types@1.345.2
+
+## 1.345.1
+
+### Patch Changes
+
+- [#3034](https://github.com/PostHog/posthog-js/pull/3034) [`de43d70`](https://github.com/PostHog/posthog-js/commit/de43d70e5d94f74cf58745695968eee09fbc64b6) Thanks [@adboio](https://github.com/adboio)! - add survey shown tracking to useThumbSurvey + option to disable shown tracking in displaySurvey
+  (2026-02-10)
+- Updated dependencies []:
+    - @posthog/types@1.345.1
+
+## 1.345.0
+
+### Minor Changes
+
+- [#2919](https://github.com/PostHog/posthog-js/pull/2919) [`fe8090c`](https://github.com/PostHog/posthog-js/commit/fe8090c00f0122ed4aad37465f43480c50392506) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - Add `$feature_flag_error` property to `$feature_flag_called` events
+  (2026-02-09)
+
+### Patch Changes
+
+- [#3066](https://github.com/PostHog/posthog-js/pull/3066) [`90db5d4`](https://github.com/PostHog/posthog-js/commit/90db5d48d7ef0bff0ece31fa9a1047c10b76aa55) Thanks [@pauldambra](https://github.com/pauldambra)! - fix: remote config cache invalidation was too aggressive
+  (2026-02-09)
+- Updated dependencies [[`fe8090c`](https://github.com/PostHog/posthog-js/commit/fe8090c00f0122ed4aad37465f43480c50392506)]:
+    - @posthog/types@1.345.0
+
+## 1.344.0
+
+### Minor Changes
+
+- [#2820](https://github.com/PostHog/posthog-js/pull/2820) [`d578824`](https://github.com/PostHog/posthog-js/commit/d578824395ceba3b854970c2a7723e97466d9e9d) Thanks [@ordehi](https://github.com/ordehi)! - Add survey response validation for message length (min and max length). Fixes whitespace-only bypass for required questions. Existing surveys work unchanged but now properly reject blank responses.
+  (2026-02-09)
+
+### Patch Changes
+
+- [#3055](https://github.com/PostHog/posthog-js/pull/3055) [`afdf746`](https://github.com/PostHog/posthog-js/commit/afdf7467ecff7bf8ed8f1645de0d370808c3ee9a) Thanks [@adboio](https://github.com/adboio)! - do not attempt to load the toolbar from the toolbar itself
+  (2026-02-09)
+- Updated dependencies [[`d578824`](https://github.com/PostHog/posthog-js/commit/d578824395ceba3b854970c2a7723e97466d9e9d)]:
+    - @posthog/core@1.21.0
+    - @posthog/types@1.344.0
+
+## 1.343.2
+
+### Patch Changes
+
+- Updated dependencies [[`e055f9a`](https://github.com/PostHog/posthog-js/commit/e055f9a344d7c11309c56444383f79df335a5c51)]:
+    - @posthog/core@1.20.2
+    - @posthog/types@1.343.2
+
+## 1.343.1
+
+### Patch Changes
+
+- [#3051](https://github.com/PostHog/posthog-js/pull/3051) [`aa712a3`](https://github.com/PostHog/posthog-js/commit/aa712a37265c7f1bb4ac9532fe440f696115c3a2) Thanks [@pauldambra](https://github.com/pauldambra)! - fix: replay remote config cache should be invalidated periodically
+  (2026-02-09)
+- Updated dependencies []:
+    - @posthog/types@1.343.1
+
+## 1.343.0
+
+### Minor Changes
+
+- [#3048](https://github.com/PostHog/posthog-js/pull/3048) [`dd3328f`](https://github.com/PostHog/posthog-js/commit/dd3328f82f56777217e0672f33d04924aff9b69f) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Do not show identification form if user is identified
+  (2026-02-09)
+
+### Patch Changes
+
+- [#3049](https://github.com/PostHog/posthog-js/pull/3049) [`8d9bb16`](https://github.com/PostHog/posthog-js/commit/8d9bb16ea664fbd83529715edf1e330d45832e2d) Thanks [@pauldambra](https://github.com/pauldambra)! - fix: sampled: true in persistence if legacy and should be ignored
+  (2026-02-09)
+- Updated dependencies []:
+    - @posthog/types@1.343.0
+
+## 1.342.1
+
+### Patch Changes
+
+- [#3039](https://github.com/PostHog/posthog-js/pull/3039) [`8f75dae`](https://github.com/PostHog/posthog-js/commit/8f75dae39ae2938624ca49e778915a92f2491556) Thanks [@hpouillot](https://github.com/hpouillot)! - fix(err): fix console error capturing
+  (2026-02-06)
+- Updated dependencies [[`8f75dae`](https://github.com/PostHog/posthog-js/commit/8f75dae39ae2938624ca49e778915a92f2491556)]:
+    - @posthog/core@1.20.1
+    - @posthog/types@1.342.1
+
+## 1.342.0
+
+### Minor Changes
+
+- [#3032](https://github.com/PostHog/posthog-js/pull/3032) [`19d59ea`](https://github.com/PostHog/posthog-js/commit/19d59ea40a909a5018605ab04ee7598f1d1611b2) Thanks [@dmarticus](https://github.com/dmarticus)! - add featureFlagsReloading event for tracking flag reload state
+  (2026-02-05)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.342.0
+
+## 1.341.2
+
+### Patch Changes
+
+- [#3035](https://github.com/PostHog/posthog-js/pull/3035) [`b68e991`](https://github.com/PostHog/posthog-js/commit/b68e99105b3135f619e098a042d9a91c7c9ef8cf) Thanks [@adboio](https://github.com/adboio)! - unify element<>modal steps for product tours, deprecate element steps
+  (2026-02-05)
+- Updated dependencies []:
+    - @posthog/types@1.341.2
+
+## 1.341.1
+
+### Patch Changes
+
+- [#3041](https://github.com/PostHog/posthog-js/pull/3041) [`23292d4`](https://github.com/PostHog/posthog-js/commit/23292d4cfbb589908dd6a64b1472b1d6ac2e6c1c) Thanks [@adboio](https://github.com/adboio)! - replace stopPropagation with preventDefault for tour manaul click triggers
+  (2026-02-05)
+- Updated dependencies []:
+    - @posthog/types@1.341.1
+
+## 1.341.0
+
+### Minor Changes
+
+- [#3027](https://github.com/PostHog/posthog-js/pull/3027) [`d7b37f7`](https://github.com/PostHog/posthog-js/commit/d7b37f7d5140955da5adb11b6a6d4317a676bcc7) Thanks [@robbie-c](https://github.com/robbie-c)! - Rename setTestUser to setInternalOrTestUser
+  (2026-02-04)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.341.0
+
+## 1.340.0
+
+### Minor Changes
+
+- [#3024](https://github.com/PostHog/posthog-js/pull/3024) [`2b2725e`](https://github.com/PostHog/posthog-js/commit/2b2725efc24416cc659ea963d4a121c0c8666db7) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Support widget position
+  (2026-02-04)
+
+### Patch Changes
+
+- Updated dependencies [[`bb62809`](https://github.com/PostHog/posthog-js/commit/bb62809917845685ae7e2e6d5adad6be5528356e)]:
+    - @posthog/core@1.20.0
+    - @posthog/types@1.340.0
+
+## 1.339.1
+
+### Patch Changes
+
+- [#3007](https://github.com/PostHog/posthog-js/pull/3007) [`af665cc`](https://github.com/PostHog/posthog-js/commit/af665cc98b2fe2f59bdc5226bcf616b0a5bd0f25) Thanks [@adboio](https://github.com/adboio)! - add element inference precision to tours; do not mark as shown until we know first step rendered successfully
+  (2026-02-03)
+- Updated dependencies []:
+    - @posthog/types@1.339.1
+
+## 1.339.0
+
+### Minor Changes
+
+- [#3006](https://github.com/PostHog/posthog-js/pull/3006) [`b3ec434`](https://github.com/PostHog/posthog-js/commit/b3ec4346e77917121c4fe7bfd966d09850df00f6) Thanks [@robbie-c](https://github.com/robbie-c)! - Add a function isTestUser() and config option test_user_hostname
+  (2026-02-03)
+
+### Patch Changes
+
+- [#2993](https://github.com/PostHog/posthog-js/pull/2993) [`5420f4d`](https://github.com/PostHog/posthog-js/commit/5420f4d5efb35e38d54df8dc0ec0c479f9e80eba) Thanks [@pauldambra](https://github.com/pauldambra)! - upgrade to posthog/rrweb 0.0.40
+  (2026-02-03)
+- Updated dependencies [[`b3ec434`](https://github.com/PostHog/posthog-js/commit/b3ec4346e77917121c4fe7bfd966d09850df00f6)]:
+    - @posthog/types@1.339.0
+
+## 1.338.1
+
+### Patch Changes
+
+- [#3002](https://github.com/PostHog/posthog-js/pull/3002) [`3105ff6`](https://github.com/PostHog/posthog-js/commit/3105ff6d0783c77ed75b1eb1be33617d836fd43f) Thanks [@adboio](https://github.com/adboio)! - fix stale element references in multi-page product tours
+  (2026-02-03)
+- Updated dependencies []:
+    - @posthog/types@1.338.1
+
+## 1.338.0
+
+### Minor Changes
+
+- [#3020](https://github.com/PostHog/posthog-js/pull/3020) [`5ccf27e`](https://github.com/PostHog/posthog-js/commit/5ccf27e1eb37f349c0f9602830df65a7cd3d02a4) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Fix issue with contrast colors in support widget
+  (2026-02-03)
+
+### Patch Changes
+
+- Updated dependencies []:
+    - @posthog/types@1.338.0
+
+## 1.337.1
+
+### Patch Changes
+
+- Updated dependencies [[`c99e5fe`](https://github.com/PostHog/posthog-js/commit/c99e5feb043870357c8f722eb52542327c3f472b)]:
+    - @posthog/core@1.19.0
+    - @posthog/types@1.337.1
+
+## 1.337.0
+
+### Minor Changes
+
+- [#2996](https://github.com/PostHog/posthog-js/pull/2996) [`7768010`](https://github.com/PostHog/posthog-js/commit/77680105f1e8baf5ed1934d423494793d11ff01a) Thanks [@matheus-vb](https://github.com/matheus-vb)! - Filter out flags marked as failed before merging with cached values, preventing transient backend errors from overwriting previously evaluated flag states
+  (2026-02-03)
+
+- [#3000](https://github.com/PostHog/posthog-js/pull/3000) [`4a1af3b`](https://github.com/PostHog/posthog-js/commit/4a1af3bcdc659127fbdab43dbfe887096bfd9c8d) Thanks [@veryayskiy](https://github.com/veryayskiy)! - Render markdown in support product
+  (2026-02-03)
+
+### Patch Changes
+
+- [#3001](https://github.com/PostHog/posthog-js/pull/3001) [`9bd4dbc`](https://github.com/PostHog/posthog-js/commit/9bd4dbc89017b009cdbdc6ac21456b1f2bc590f4) Thanks [@adboio](https://github.com/adboio)! - do not intercept element clicks if a product tour fails to show
+  (2026-02-03)
+- Updated dependencies [[`7768010`](https://github.com/PostHog/posthog-js/commit/77680105f1e8baf5ed1934d423494793d11ff01a)]:
+    - @posthog/core@1.18.0
+    - @posthog/types@1.337.0
+
 ## 1.336.4
 
 ### Patch Changes

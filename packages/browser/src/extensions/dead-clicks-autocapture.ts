@@ -4,6 +4,7 @@ import { isBoolean, isObject } from '@posthog/core'
 import { assignableWindow, document, LazyLoadedDeadClicksAutocaptureInterface } from '../utils/globals'
 import { createLogger } from '../utils/logger'
 import { DeadClicksAutoCaptureConfig, RemoteConfig } from '../types'
+import type { Extension } from './types'
 
 const logger = createLogger('[Dead Clicks]')
 
@@ -22,7 +23,7 @@ export const isDeadClicksEnabledForAutocapture = (instance: DeadClicksAutocaptur
     return isRemoteEnabled
 }
 
-export class DeadClicksAutocapture {
+export class DeadClicksAutocapture implements Extension {
     get lazyLoadedDeadClicksAutocapture(): LazyLoadedDeadClicksAutocaptureInterface | undefined {
         return this._lazyLoadedDeadClicksAutocapture
     }
@@ -34,23 +35,29 @@ export class DeadClicksAutocapture {
         readonly isEnabled: (dca: DeadClicksAutocapture) => boolean,
         readonly onCapture?: DeadClicksAutoCaptureConfig['__onCapture']
     ) {
-        this.startIfEnabled()
+        this.startIfEnabledOrStop()
     }
 
     public onRemoteConfig(response: RemoteConfig) {
+        if (!('captureDeadClicks' in response)) {
+            return
+        }
+
         if (this.instance.persistence) {
             this.instance.persistence.register({
-                [DEAD_CLICKS_ENABLED_SERVER_SIDE]: response?.captureDeadClicks,
+                [DEAD_CLICKS_ENABLED_SERVER_SIDE]: response.captureDeadClicks,
             })
         }
-        this.startIfEnabled()
+        this.startIfEnabledOrStop()
     }
 
-    public startIfEnabled() {
+    public startIfEnabledOrStop() {
         if (this.isEnabled(this)) {
             this._loadScript(() => {
                 this._start()
             })
+        } else {
+            this.stop()
         }
     }
 

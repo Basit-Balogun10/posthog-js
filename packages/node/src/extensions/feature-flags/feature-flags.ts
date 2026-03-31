@@ -58,6 +58,19 @@ type FeatureFlagsPollerOptions = {
   strictLocalEvaluation?: boolean
 }
 
+export type FeatureFlagEvaluationContext = {
+  distinctId: string
+  groups: Record<string, string>
+  personProperties: Record<string, any>
+  groupProperties: Record<string, Record<string, any>>
+  evaluationCache: Record<string, FeatureFlagValue>
+}
+
+type ComputeFlagAndPayloadOptions = {
+  matchValue?: FeatureFlagValue
+  skipLoadCheck?: boolean
+}
+
 class FeatureFlagsPoller {
   pollingInterval: number
   personalApiKey: string
@@ -82,6 +95,7 @@ class FeatureFlagsPoller {
   private flagsEtag?: string
   private nextFetchAllowedAt?: number
   private strictLocalEvaluation: boolean
+  private flagDefinitionsLoadedAt?: number
 
   constructor({
     pollingInterval,
@@ -122,12 +136,28 @@ class FeatureFlagsPoller {
     }
   }
 
+  private createEvaluationContext(
+    distinctId: string,
+    groups: Record<string, string> = {},
+    personProperties: Record<string, any> = {},
+    groupProperties: Record<string, Record<string, any>> = {},
+    evaluationCache: Record<string, FeatureFlagValue> = {}
+  ): FeatureFlagEvaluationContext {
+    return {
+      distinctId,
+      groups,
+      personProperties,
+      groupProperties,
+      evaluationCache,
+    }
+  }
+
   async getFeatureFlag(
     key: string,
     distinctId: string,
     groups: Record<string, string> = {},
-    personProperties: Record<string, string> = {},
-    groupProperties: Record<string, Record<string, string>> = {}
+    personProperties: Record<string, any> = {},
+    groupProperties: Record<string, Record<string, any>> = {}
   ): Promise<FeatureFlagValue | undefined> {
     await this.loadFeatureFlags()
 
@@ -141,14 +171,9 @@ class FeatureFlagsPoller {
     featureFlag = this.featureFlagsByKey[key]
 
     if (featureFlag !== undefined) {
+      const evaluationContext = this.createEvaluationContext(distinctId, groups, personProperties, groupProperties)
       try {
-        const result = await this.computeFlagAndPayloadLocally(
-          featureFlag,
-          distinctId,
-          groups,
-          personProperties,
-          groupProperties
-        )
+        const result = await this.computeFlagAndPayloadLocally(featureFlag, evaluationContext)
         response = result.value
         this.logMsgIfDebug(() => console.debug(`Successfully computed flag locally: ${key} -> ${response}`))
       } catch (e) {
@@ -164,10 +189,7 @@ class FeatureFlagsPoller {
   }
 
   async getAllFlagsAndPayloads(
-    distinctId: string,
-    groups: Record<string, string> = {},
-    personProperties: Record<string, string> = {},
-    groupProperties: Record<string, Record<string, string>> = {},
+    evaluationContext: FeatureFlagEvaluationContext,
     flagKeysToExplicitlyEvaluate?: string[]
   ): Promise<{
     response: Record<string, FeatureFlagValue>
@@ -184,20 +206,17 @@ class FeatureFlagsPoller {
       ? flagKeysToExplicitlyEvaluate.map((key) => this.featureFlagsByKey[key]).filter(Boolean)
       : this.featureFlags
 
-    // Create a shared evaluation cache to prevent memory leaks when processing many flags
-    const sharedEvaluationCache: Record<string, FeatureFlagValue> = {}
+    const sharedEvaluationContext = {
+      ...evaluationContext,
+      evaluationCache: evaluationContext.evaluationCache ?? {},
+    }
 
     await Promise.all(
       flagsToEvaluate.map(async (flag) => {
         try {
           const { value: matchValue, payload: matchPayload } = await this.computeFlagAndPayloadLocally(
             flag,
-            distinctId,
-            groups,
-            personProperties,
-            groupProperties,
-            undefined /* matchValue */,
-            sharedEvaluationCache
+            sharedEvaluationContext
           )
           response[flag.key] = matchValue
           if (matchPayload) {
@@ -219,17 +238,14 @@ class FeatureFlagsPoller {
 
   async computeFlagAndPayloadLocally(
     flag: PostHogFeatureFlag,
-    distinctId: string,
-    groups: Record<string, string> = {},
-    personProperties: Record<string, string> = {},
-    groupProperties: Record<string, Record<string, string>> = {},
-    matchValue?: FeatureFlagValue,
-    evaluationCache?: Record<string, FeatureFlagValue>,
-    skipLoadCheck: boolean = false
+    evaluationContext: FeatureFlagEvaluationContext,
+    options: ComputeFlagAndPayloadOptions = {}
   ): Promise<{
     value: FeatureFlagValue
     payload: JsonType | null
   }> {
+    const { matchValue, skipLoadCheck = false } = options
+
     // Only load flags if not already loaded and not skipping the check
     if (!skipLoadCheck) {
       await this.loadFeatureFlags()
@@ -245,14 +261,7 @@ class FeatureFlagsPoller {
     if (matchValue !== undefined) {
       flagValue = matchValue
     } else {
-      flagValue = await this.computeFlagValueLocally(
-        flag,
-        distinctId,
-        groups,
-        personProperties,
-        groupProperties,
-        evaluationCache
-      )
+      flagValue = await this.computeFlagValueLocally(flag, evaluationContext)
     }
 
     // Always compute payload based on the final flagValue (whether provided or computed)
@@ -263,12 +272,10 @@ class FeatureFlagsPoller {
 
   private async computeFlagValueLocally(
     flag: PostHogFeatureFlag,
-    distinctId: string,
-    groups: Record<string, string> = {},
-    personProperties: Record<string, string> = {},
-    groupProperties: Record<string, Record<string, string>> = {},
-    evaluationCache: Record<string, FeatureFlagValue> = {}
+    evaluationContext: FeatureFlagEvaluationContext
   ): Promise<FeatureFlagValue> {
+    const { distinctId, groups, personProperties, groupProperties } = evaluationContext
+
     if (flag.ensure_experience_continuity) {
       throw new InconclusiveMatchError('Flag has experience continuity enabled')
     }
@@ -299,11 +306,54 @@ class FeatureFlagsPoller {
         return false
       }
 
+      if (
+        flag.bucketing_identifier === 'device_id' &&
+        (personProperties?.$device_id === undefined ||
+          personProperties?.$device_id === null ||
+          personProperties?.$device_id === '')
+      ) {
+        this.logMsgIfDebug(() =>
+          console.warn(`[FEATURE FLAGS] Ignoring bucketing_identifier for group flag: ${flag.key}`)
+        )
+      }
+
       const focusedGroupProperties = groupProperties[groupName]
-      return await this.matchFeatureFlagProperties(flag, groups[groupName], focusedGroupProperties, evaluationCache)
+      return await this.matchFeatureFlagProperties(flag, groups[groupName], focusedGroupProperties, evaluationContext)
     } else {
-      return await this.matchFeatureFlagProperties(flag, distinctId, personProperties, evaluationCache)
+      const bucketingValue = this.getBucketingValueForFlag(flag, distinctId, personProperties)
+      if (bucketingValue === undefined) {
+        this.logMsgIfDebug(() =>
+          console.warn(
+            `[FEATURE FLAGS] Can't compute feature flag: ${flag.key} without $device_id, falling back to server evaluation`
+          )
+        )
+        throw new InconclusiveMatchError(`Can't compute feature flag: ${flag.key} without $device_id`)
+      }
+      return await this.matchFeatureFlagProperties(flag, bucketingValue, personProperties, evaluationContext)
     }
+  }
+
+  private getBucketingValueForFlag(
+    flag: PostHogFeatureFlag,
+    distinctId: string,
+    properties: Record<string, any>
+  ): string | undefined {
+    if (flag.filters?.aggregation_group_type_index != undefined) {
+      // Group flags are bucketed by group key in computeFlagValueLocally.
+      // If a group flag appears in dependency evaluation, ignore bucketing_identifier
+      // to preserve existing behavior and avoid requiring $device_id unexpectedly.
+      return distinctId
+    }
+
+    if (flag.bucketing_identifier === 'device_id') {
+      const deviceId = properties?.$device_id
+      if (deviceId === undefined || deviceId === null || deviceId === '') {
+        return undefined
+      }
+      return deviceId
+    }
+
+    return distinctId
   }
 
   private getFeatureFlagPayload(key: string, flagValue: FeatureFlagValue): JsonType | null {
@@ -339,10 +389,10 @@ class FeatureFlagsPoller {
 
   private async evaluateFlagDependency(
     property: FlagProperty,
-    distinctId: string,
-    properties: Record<string, string>,
-    evaluationCache: Record<string, FeatureFlagValue>
+    properties: Record<string, any>,
+    evaluationContext: FeatureFlagEvaluationContext
   ): Promise<boolean> {
+    const { evaluationCache } = evaluationContext
     const targetFlagKey = property.key
 
     if (!this.featureFlagsByKey) {
@@ -384,12 +434,11 @@ class FeatureFlagsPoller {
           // Inactive flag evaluates to false
           evaluationCache[depFlagKey] = false
         } else {
-          // Recursively evaluate the dependency
+          // Reuse full flag evaluation so dependencies respect person vs group bucketing rules.
           try {
-            const depResult = await this.matchFeatureFlagProperties(depFlag, distinctId, properties, evaluationCache)
+            const depResult = await this.computeFlagValueLocally(depFlag, evaluationContext)
             evaluationCache[depFlagKey] = depResult
           } catch (error) {
-            // If we can't evaluate a dependency, store throw InconclusiveMatchError(`Missing flag dependency '${depFlagKey}' for flag '${targetFlagKey}'`)
             throw new InconclusiveMatchError(
               `Error evaluating flag dependency '${depFlagKey}' for flag '${targetFlagKey}': ${error}`
             )
@@ -430,9 +479,9 @@ class FeatureFlagsPoller {
 
   async matchFeatureFlagProperties(
     flag: PostHogFeatureFlag,
-    distinctId: string,
-    properties: Record<string, string>,
-    evaluationCache: Record<string, FeatureFlagValue> = {}
+    bucketingValue: string,
+    properties: Record<string, any>,
+    evaluationContext: FeatureFlagEvaluationContext
   ): Promise<FeatureFlagValue> {
     const flagFilters = flag.filters || {}
     const flagConditions = flagFilters.groups || []
@@ -441,13 +490,13 @@ class FeatureFlagsPoller {
 
     for (const condition of flagConditions) {
       try {
-        if (await this.isConditionMatch(flag, distinctId, condition, properties, evaluationCache)) {
+        if (await this.isConditionMatch(flag, bucketingValue, condition, properties, evaluationContext)) {
           const variantOverride = condition.variant
           const flagVariants = flagFilters.multivariate?.variants || []
           if (variantOverride && flagVariants.some((variant) => variant.key === variantOverride)) {
             result = variantOverride
           } else {
-            result = (await this.getMatchingVariant(flag, distinctId)) || true
+            result = (await this.getMatchingVariant(flag, bucketingValue)) || true
           }
           break
         }
@@ -478,10 +527,10 @@ class FeatureFlagsPoller {
 
   async isConditionMatch(
     flag: PostHogFeatureFlag,
-    distinctId: string,
+    bucketingValue: string,
     condition: FeatureFlagCondition,
-    properties: Record<string, string>,
-    evaluationCache: Record<string, FeatureFlagValue> = {}
+    properties: Record<string, any>,
+    evaluationContext: FeatureFlagEvaluationContext
   ): Promise<boolean> {
     const rolloutPercentage = condition.rollout_percentage
     const warnFunction = (msg: string): void => {
@@ -495,7 +544,7 @@ class FeatureFlagsPoller {
         if (propertyType === 'cohort') {
           matches = matchCohort(prop, properties, this.cohorts, this.debugMode)
         } else if (propertyType === 'flag') {
-          matches = await this.evaluateFlagDependency(prop, distinctId, properties, evaluationCache)
+          matches = await this.evaluateFlagDependency(prop, properties, evaluationContext)
         } else {
           matches = matchProperty(prop, properties, warnFunction)
         }
@@ -510,15 +559,15 @@ class FeatureFlagsPoller {
       }
     }
 
-    if (rolloutPercentage != undefined && (await _hash(flag.key, distinctId)) > rolloutPercentage / 100.0) {
+    if (rolloutPercentage != undefined && (await _hash(flag.key, bucketingValue)) > rolloutPercentage / 100.0) {
       return false
     }
 
     return true
   }
 
-  async getMatchingVariant(flag: PostHogFeatureFlag, distinctId: string): Promise<FeatureFlagValue | undefined> {
-    const hashValue = await _hash(flag.key, distinctId, 'variant')
+  async getMatchingVariant(flag: PostHogFeatureFlag, bucketingValue: string): Promise<FeatureFlagValue | undefined> {
+    const hashValue = await _hash(flag.key, bucketingValue, 'variant')
     const matchingVariant = this.variantLookupTable(flag).find((variant) => {
       return hashValue >= variant.valueMin && hashValue < variant.valueMax
     })
@@ -640,6 +689,14 @@ class FeatureFlagsPoller {
    */
   isLocalEvaluationReady(): boolean {
     return (this.loadedSuccessfullyOnce ?? false) && (this.featureFlags?.length ?? 0) > 0
+  }
+
+  /**
+   * Returns the timestamp (in milliseconds) when flag definitions were last loaded.
+   * Returns undefined if flags have not been loaded yet.
+   */
+  getFlagDefinitionsLoadedAt(): number | undefined {
+    return this.flagDefinitionsLoadedAt
   }
 
   /**
@@ -803,6 +860,8 @@ class FeatureFlagsPoller {
           }
 
           this.updateFlagState(flagData)
+          // Set timestamp to when definitions were actually fetched from server
+          this.flagDefinitionsLoadedAt = Date.now()
           this.clearBackoff()
 
           if (this.cacheProvider && shouldFetch) {
@@ -904,12 +963,12 @@ class FeatureFlagsPoller {
   }
 }
 
-// # This function takes a distinct_id and a feature flag key and returns a float between 0 and 1.
-// # Given the same distinct_id and key, it'll always return the same float. These floats are
+// # This function takes a bucketing identifier and a feature flag key and returns a float between 0 and 1.
+// # Given the same bucketing identifier and key, it'll always return the same float. These floats are
 // # uniformly distributed between 0 and 1, so if we want to show this feature to 20% of traffic
-// # we can do _hash(key, distinct_id) < 0.2
-async function _hash(key: string, distinctId: string, salt: string = ''): Promise<number> {
-  const hashString = await hashSHA1(`${key}.${distinctId}${salt}`)
+// # we can do _hash(key, bucketing_identifier) < 0.2
+async function _hash(key: string, bucketingValue: string, salt: string = ''): Promise<number> {
+  const hashString = await hashSHA1(`${key}.${bucketingValue}${salt}`)
   return parseInt(hashString.slice(0, 15), 16) / LONG_SCALE
 }
 
@@ -1022,6 +1081,45 @@ function matchProperty(
         return overrideDate < parsedDate
       }
       return overrideDate > parsedDate
+    }
+    case 'semver_eq': {
+      const cmp = compareSemverTuples(parseSemver(String(overrideValue)), parseSemver(String(value)))
+      return cmp === 0
+    }
+    case 'semver_neq': {
+      const cmp = compareSemverTuples(parseSemver(String(overrideValue)), parseSemver(String(value)))
+      return cmp !== 0
+    }
+    case 'semver_gt': {
+      const cmp = compareSemverTuples(parseSemver(String(overrideValue)), parseSemver(String(value)))
+      return cmp > 0
+    }
+    case 'semver_gte': {
+      const cmp = compareSemverTuples(parseSemver(String(overrideValue)), parseSemver(String(value)))
+      return cmp >= 0
+    }
+    case 'semver_lt': {
+      const cmp = compareSemverTuples(parseSemver(String(overrideValue)), parseSemver(String(value)))
+      return cmp < 0
+    }
+    case 'semver_lte': {
+      const cmp = compareSemverTuples(parseSemver(String(overrideValue)), parseSemver(String(value)))
+      return cmp <= 0
+    }
+    case 'semver_tilde': {
+      const overrideParsed = parseSemver(String(overrideValue))
+      const { lower, upper } = computeTildeBounds(String(value))
+      return compareSemverTuples(overrideParsed, lower) >= 0 && compareSemverTuples(overrideParsed, upper) < 0
+    }
+    case 'semver_caret': {
+      const overrideParsed = parseSemver(String(overrideValue))
+      const { lower, upper } = computeCaretBounds(String(value))
+      return compareSemverTuples(overrideParsed, lower) >= 0 && compareSemverTuples(overrideParsed, upper) < 0
+    }
+    case 'semver_wildcard': {
+      const overrideParsed = parseSemver(String(overrideValue))
+      const { lower, upper } = computeWildcardBounds(String(value))
+      return compareSemverTuples(overrideParsed, lower) >= 0 && compareSemverTuples(overrideParsed, upper) < 0
     }
     default:
       throw new InconclusiveMatchError(`Unknown operator: ${operator}`)
@@ -1174,6 +1272,132 @@ function isValidRegex(regex: string): boolean {
   }
 }
 
+type SemverTuple = [number, number, number]
+
+/**
+ * Parse a version string into a [major, minor, patch] tuple.
+ * - Strips leading/trailing whitespace
+ * - Strips 'v' or 'V' prefix
+ * - Strips pre-release and build metadata (-alpha, +build)
+ * - Defaults missing components to 0
+ * - Ignores extra components beyond the third
+ * - Throws InconclusiveMatchError for invalid input
+ */
+function parseSemver(value: string): SemverTuple {
+  const text = String(value).trim().replace(/^[vV]/, '')
+
+  // Strip pre-release and build metadata
+  const baseVersion = text.split('-')[0].split('+')[0]
+
+  if (!baseVersion || baseVersion.startsWith('.')) {
+    throw new InconclusiveMatchError(`Invalid semver: ${value}`)
+  }
+
+  const parts = baseVersion.split('.')
+
+  const parsePart = (part: string | undefined): number => {
+    if (part === undefined || part === '') {
+      return 0
+    }
+    if (!/^\d+$/.test(part)) {
+      throw new InconclusiveMatchError(`Invalid semver: ${value}`)
+    }
+    return parseInt(part, 10)
+  }
+
+  const major = parsePart(parts[0])
+  const minor = parsePart(parts[1])
+  const patch = parsePart(parts[2])
+
+  return [major, minor, patch]
+}
+
+/**
+ * Compare two semver tuples.
+ * Returns -1 if a < b, 0 if a == b, 1 if a > b
+ */
+function compareSemverTuples(a: SemverTuple, b: SemverTuple): number {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] < b[i]) return -1
+    if (a[i] > b[i]) return 1
+  }
+  return 0
+}
+
+/**
+ * Compute bounds for tilde operator: ~X.Y.Z means >=X.Y.Z and <X.(Y+1).0
+ */
+function computeTildeBounds(value: string): { lower: SemverTuple; upper: SemverTuple } {
+  const parsed = parseSemver(value)
+  const lower: SemverTuple = [parsed[0], parsed[1], parsed[2]]
+  const upper: SemverTuple = [parsed[0], parsed[1] + 1, 0]
+  return { lower, upper }
+}
+
+/**
+ * Compute bounds for caret operator:
+ * - ^X.Y.Z where X > 0: >=X.Y.Z <(X+1).0.0
+ * - ^0.Y.Z where Y > 0: >=0.Y.Z <0.(Y+1).0
+ * - ^0.0.Z: >=0.0.Z <0.0.(Z+1)
+ */
+function computeCaretBounds(value: string): { lower: SemverTuple; upper: SemverTuple } {
+  const parsed = parseSemver(value)
+  const [major, minor, patch] = parsed
+  const lower: SemverTuple = [major, minor, patch]
+
+  let upper: SemverTuple
+  if (major > 0) {
+    upper = [major + 1, 0, 0]
+  } else if (minor > 0) {
+    upper = [0, minor + 1, 0]
+  } else {
+    upper = [0, 0, patch + 1]
+  }
+
+  return { lower, upper }
+}
+
+/**
+ * Compute bounds for wildcard operator:
+ * - "X.*" or "X" with wildcard: >=X.0.0 <(X+1).0.0
+ * - "X.Y.*": >=X.Y.0 <X.(Y+1).0
+ */
+function computeWildcardBounds(value: string): { lower: SemverTuple; upper: SemverTuple } {
+  const text = String(value).trim().replace(/^[vV]/, '')
+
+  // Remove trailing .* or *
+  const cleanedText = text.replace(/\.\*$/, '').replace(/\*$/, '')
+
+  if (!cleanedText) {
+    throw new InconclusiveMatchError(`Invalid wildcard semver: ${value}`)
+  }
+
+  const parts = cleanedText.split('.')
+  const major = parseInt(parts[0], 10)
+  if (isNaN(major)) {
+    throw new InconclusiveMatchError(`Invalid wildcard semver: ${value}`)
+  }
+
+  let lower: SemverTuple
+  let upper: SemverTuple
+
+  if (parts.length === 1) {
+    // X.* pattern
+    lower = [major, 0, 0]
+    upper = [major + 1, 0, 0]
+  } else {
+    // X.Y.* pattern
+    const minor = parseInt(parts[1], 10)
+    if (isNaN(minor)) {
+      throw new InconclusiveMatchError(`Invalid wildcard semver: ${value}`)
+    }
+    lower = [major, minor, 0]
+    upper = [major, minor + 1, 0]
+  }
+
+  return { lower, upper }
+}
+
 function convertToDateTime(value: FlagPropertyValue | Date): Date {
   if (value instanceof Date) {
     return value
@@ -1229,6 +1453,7 @@ export {
   FeatureFlagsPoller,
   matchProperty,
   relativeDateParseForFeatureFlagMatching,
+  parseSemver,
   InconclusiveMatchError,
   RequiresServerEvaluation,
   ClientError,

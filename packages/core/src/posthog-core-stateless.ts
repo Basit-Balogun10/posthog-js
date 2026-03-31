@@ -290,6 +290,9 @@ export abstract class PostHogCoreStateless {
     }
   }
 
+  /**
+   * @internal
+   */
   public addPendingPromise<T>(promise: Promise<T>): Promise<T> {
     return this.promiseQueue.add(promise)
   }
@@ -459,7 +462,7 @@ export abstract class PostHogCoreStateless {
     personProperties: Record<string, string> = {},
     groupProperties: Record<string, Record<string, string>> = {},
     extraPayload: Record<string, any> = {},
-    fetchConfig: boolean = true
+    fetchConfig: boolean = false
   ): Promise<GetFlagsResult> {
     await this._initPromise
 
@@ -862,6 +865,18 @@ export abstract class PostHogCoreStateless {
     return message
   }
 
+  /**
+   * Hook that allows subclasses to wait for storage operations to complete.
+   * This is called after queue changes are persisted during flush to ensure
+   * data is safely written to storage before considering events as sent.
+   *
+   * Override this in implementations with async storage (e.g., React Native)
+   * to prevent duplicate events on app crash/restart scenarios.
+   */
+  protected async flushStorage(): Promise<void> {
+    // Default: no-op for sync storage implementations
+  }
+
   protected enqueue(type: string, _message: any, options?: PostHogCaptureOptions): void {
     this.wrap(() => {
       if (this.optedOut) {
@@ -1078,11 +1093,13 @@ export abstract class PostHogCoreStateless {
       const batchItems = queue.slice(0, this.maxBatchSize)
       const batchMessages = batchItems.map((item) => item.message)
 
-      const persistQueueChange = (): void => {
+      const persistQueueChange = async (): Promise<void> => {
         const refreshedQueue = this.getPersistedProperty<PostHogQueueItem[]>(PostHogPersistedProperty.Queue) || []
         const newQueue = refreshedQueue.slice(batchItems.length)
         this.setPersistedProperty<PostHogQueueItem[]>(PostHogPersistedProperty.Queue, newQueue)
         queue = newQueue
+        // Wait for storage to complete to prevent duplicate events on app crash
+        await this.flushStorage()
       }
 
       const data: Record<string, any> = {
@@ -1137,14 +1154,14 @@ export abstract class PostHogCoreStateless {
         // depending on the error type, eg a malformed JSON or broken queue, it'll always return an error
         // and this will be an endless loop, in this case, if the error isn't a network issue, we always remove the items from the queue
         if (!(err instanceof PostHogFetchNetworkError)) {
-          persistQueueChange()
+          await persistQueueChange()
         }
         this._events.emit('error', err)
 
         throw err
       }
 
-      persistQueueChange()
+      await persistQueueChange()
 
       sentMessages.push(...batchMessages)
     }
@@ -1157,12 +1174,6 @@ export abstract class PostHogCoreStateless {
     retryOptions?: Partial<RetriableOptions>,
     requestTimeout?: number
   ): Promise<PostHogFetchResponse> {
-    ;(AbortSignal as any).timeout ??= function timeout(ms: number) {
-      const ctrl = new AbortController()
-      setTimeout(() => ctrl.abort(), ms)
-      return ctrl.signal
-    }
-
     const body = options.body ? options.body : ''
     let reqByteLength = -1
     try {
@@ -1182,15 +1193,21 @@ export abstract class PostHogCoreStateless {
 
     return await retriable(
       async () => {
+        const ctrl = new AbortController()
+        const timeoutMs = requestTimeout ?? this.requestTimeout
+        const timer = safeSetTimeout(() => ctrl.abort(), timeoutMs)
+
         let res: PostHogFetchResponse | null = null
         try {
           res = await this.fetch(url, {
-            signal: (AbortSignal as any).timeout(requestTimeout ?? this.requestTimeout),
+            signal: ctrl.signal,
             ...options,
           })
         } catch (e) {
           // fetch will only throw on network errors or on timeouts
           throw new PostHogFetchNetworkError(e)
+        } finally {
+          clearTimeout(timer)
         }
         // If we're in no-cors mode, we can't access the response status
         // We only throw on HTTP errors if we're not in no-cors mode
@@ -1242,16 +1259,21 @@ export abstract class PostHogCoreStateless {
       }
     }
 
-    return Promise.race([
-      new Promise<void>((_, reject) => {
-        safeSetTimeout(() => {
-          this._logger.error('Timed out while shutting down PostHog')
-          hasTimedOut = true
-          reject('Timeout while shutting down PostHog. Some events may not have been sent.')
-        }, shutdownTimeoutMs)
-      }),
-      doShutdown(),
-    ])
+    let timeoutHandle: ReturnType<typeof safeSetTimeout> | undefined
+    try {
+      return await Promise.race([
+        new Promise<void>((_, reject) => {
+          timeoutHandle = safeSetTimeout(() => {
+            this._logger.error('Timed out while shutting down PostHog')
+            hasTimedOut = true
+            reject('Timeout while shutting down PostHog. Some events may not have been sent.')
+          }, shutdownTimeoutMs)
+        }),
+        doShutdown(),
+      ])
+    } finally {
+      clearTimeout(timeoutHandle)
+    }
   }
 
   /**

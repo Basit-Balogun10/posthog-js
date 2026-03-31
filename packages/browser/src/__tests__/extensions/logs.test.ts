@@ -228,6 +228,46 @@ describe('logs entrypoint', () => {
                 host: 'example.com',
             })
         })
+
+        it('should use custom serviceName from config when provided', () => {
+            const postHogWithServiceName = {
+                ...mockPostHog,
+                config: {
+                    ...mockPostHog.config,
+                    logs: { serviceName: 'my-custom-service' },
+                },
+            } as unknown as PostHog
+
+            const initializeLogs = assignableWindow.__PosthogExtensions__.logs.initializeLogs
+            initializeLogs(postHogWithServiceName)
+
+            expect(mockResourceFromAttributes).toHaveBeenCalledWith({
+                'service.name': 'my-custom-service',
+                host: 'example.com',
+                'session.id': 'session-123',
+                'window.id': 'window-456',
+            })
+        })
+
+        it('should fall back to default service name when serviceName is not provided', () => {
+            const postHogWithoutServiceName = {
+                ...mockPostHog,
+                config: {
+                    ...mockPostHog.config,
+                    logs: { captureConsoleLogs: true },
+                },
+            } as unknown as PostHog
+
+            const initializeLogs = assignableWindow.__PosthogExtensions__.logs.initializeLogs
+            initializeLogs(postHogWithoutServiceName)
+
+            expect(mockResourceFromAttributes).toHaveBeenCalledWith({
+                'service.name': 'posthog-browser-logs',
+                host: 'example.com',
+                'session.id': 'session-123',
+                'window.id': 'window-456',
+            })
+        })
     })
 
     describe('console wrapping behavior', () => {
@@ -434,12 +474,102 @@ describe('logs entrypoint', () => {
             initializeLogs(mockPostHog)
         })
 
-        it('should handle circular references in objects', () => {
+        it('should handle circular references in objects without throwing', () => {
             const circularObj: any = { name: 'test' }
             circularObj.self = circularObj
 
-            // Should throw when logging circular objects (JSON.stringify limitation)
-            expect(() => assignableWindow.console.log(circularObj)).toThrow()
+            expect(() => assignableWindow.console.log(circularObj)).not.toThrow()
+
+            expect(mockEmit).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    severityText: 'INFO',
+                    body: expect.stringContaining('[Circular]'),
+                    attributes: expect.objectContaining({
+                        'log.source': 'console.log',
+                    }),
+                })
+            )
+        })
+
+        it('should preserve non-circular properties alongside circular references', () => {
+            const circularObj: any = { name: 'test', count: 42 }
+            circularObj.self = circularObj
+
+            assignableWindow.console.log(circularObj)
+
+            const body = mockEmit.mock.calls[0][0].body
+            expect(body).toContain('"name":"test"')
+            expect(body).toContain('"count":42')
+            expect(body).toContain('"self":"[Circular]"')
+        })
+
+        it('should handle deeply nested circular references', () => {
+            const root: any = { level: 0 }
+            root.child = { level: 1 }
+            root.child.child = { level: 2 }
+            root.child.child.backToRoot = root
+
+            expect(() => assignableWindow.console.log(root)).not.toThrow()
+
+            const body = mockEmit.mock.calls[0][0].body
+            expect(body).toContain('"level":0')
+            expect(body).toContain('"level":1')
+            expect(body).toContain('"level":2')
+            expect(body).toContain('"backToRoot":"[Circular]"')
+        })
+
+        it('should handle circular references in multiple console.log arguments', () => {
+            const obj1: any = { id: 1 }
+            obj1.self = obj1
+            const obj2: any = { id: 2 }
+            obj2.self = obj2
+
+            expect(() => assignableWindow.console.log(obj1, obj2)).not.toThrow()
+
+            const body = mockEmit.mock.calls[0][0].body
+            // Each argument gets its own replacer, so both are serialized independently
+            expect(body).toContain('"id":1')
+            expect(body).toContain('"id":2')
+        })
+
+        it('should handle circular references in flattenObject attributes', () => {
+            const circularObj: any = { name: 'test', value: 'hello' }
+            circularObj.self = circularObj
+
+            assignableWindow.console.log(circularObj)
+
+            // flattenObject should still extract the non-circular top-level properties
+            expect(mockEmit).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    attributes: expect.objectContaining({
+                        name: 'test',
+                        value: 'hello',
+                    }),
+                })
+            )
+        })
+
+        it('should allow the same non-circular object to appear multiple times', () => {
+            const shared = { data: 'shared' }
+            const obj = { a: shared, b: shared }
+
+            expect(() => assignableWindow.console.log(obj)).not.toThrow()
+
+            const body = mockEmit.mock.calls[0][0].body
+            // The shared object is not circular, but WeakSet will mark the second occurrence.
+            // This is the expected trade-off for circular reference safety.
+            expect(body).toContain('"data":"shared"')
+        })
+
+        it('should handle circular references with Error objects', () => {
+            const error: any = new Error('circular error')
+            error.related = { cause: error }
+
+            expect(() => assignableWindow.console.error(error)).not.toThrow()
+
+            const body = mockEmit.mock.calls[0][0].body
+            expect(body).toContain('circular error')
+            expect(body).toContain('[Circular]')
         })
 
         it('should handle very deep nested objects', () => {

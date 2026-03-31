@@ -1,11 +1,13 @@
+import type { Extension } from './extensions/types'
 import { PostHog } from './posthog-core'
 import { CaptureResult, Properties, RemoteConfig, SiteApp, SiteAppGlobals, SiteAppLoader } from './types'
 import { assignableWindow } from './utils/globals'
 import { createLogger } from './utils/logger'
 
 const logger = createLogger('[SiteApps]')
+const APP_INIT_ERROR = 'Error while initializing PostHog app with config id '
 
-export class SiteApps {
+export class SiteApps implements Extension {
     apps: Record<string, SiteApp>
 
     private _stopBuffering?: () => void
@@ -36,7 +38,7 @@ export class SiteApps {
         return assignableWindow._POSTHOG_REMOTE_CONFIG?.[this._instance.config.token]?.siteApps
     }
 
-    init() {
+    initialize() {
         if (this.isEnabled) {
             const stop = this._instance._addCaptureHook(this._eventCollector.bind(this))
             this._stopBuffering = () => {
@@ -120,7 +122,7 @@ export class SiteApps {
             }
             hasInitReturned = true
         } catch (e) {
-            logger.error(`Error while initializing PostHog app with config id ${loader.id}`, e)
+            logger.error(APP_INIT_ERROR + loader.id, e)
             onLoaded(false)
         }
 
@@ -200,7 +202,7 @@ export class SiteApps {
             assignableWindow[`__$$ph_site_app_${id}`] = this._instance
             assignableWindow.__PosthogExtensions__?.loadSiteApp?.(this._instance, url, (err) => {
                 if (err) {
-                    return logger.error(`Error while initializing PostHog app with config id ${id}`, err)
+                    return logger.error(APP_INIT_ERROR + id, err)
                 }
             })
         }

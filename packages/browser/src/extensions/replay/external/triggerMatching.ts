@@ -14,6 +14,9 @@ export const ACTIVE = 'active'
 export const BUFFERING = 'buffering'
 export const PAUSED = 'paused'
 export const LAZY_LOADING = 'lazy_loading'
+export const AWAITING_CONFIG = 'awaiting_config'
+export const MISSING_CONFIG = 'missing_config'
+export const RRWEB_ERROR = 'rrweb_error'
 
 const TRIGGER = 'trigger'
 export const TRIGGER_ACTIVATED = TRIGGER + '_activated'
@@ -24,6 +27,7 @@ export interface RecordingTriggersStatus {
     get receivedFlags(): boolean
     get isRecordingEnabled(): false | true | undefined
     get isSampled(): false | true | null
+    get rrwebError(): boolean
     get urlTriggerMatching(): URLTriggerMatching
     get eventTriggerMatching(): EventTriggerMatching
     get linkedFlagMatching(): LinkedFlagMatching
@@ -48,7 +52,17 @@ export type TriggerStatus = (typeof triggerStatuses)[number]
  * the sample rate determined this session should be sent to the server.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const sessionRecordingStatuses = [DISABLED, SAMPLED, ACTIVE, BUFFERING, PAUSED, LAZY_LOADING] as const
+const sessionRecordingStatuses = [
+    DISABLED,
+    SAMPLED,
+    ACTIVE,
+    BUFFERING,
+    PAUSED,
+    LAZY_LOADING,
+    AWAITING_CONFIG,
+    MISSING_CONFIG,
+    RRWEB_ERROR,
+] as const
 export type SessionRecordingStatus = (typeof sessionRecordingStatuses)[number]
 
 // while we have both lazy and eager loaded replay we might get either type of config
@@ -224,7 +238,7 @@ export class URLTriggerMatching implements TriggerStatusMatching {
     checkUrlTriggerConditions(
         onPause: () => void,
         onResume: () => void,
-        onActivate: (triggerType: TriggerType) => void,
+        onActivate: (triggerType: TriggerType, matchDetail?: string) => void,
         sessionId: string
     ) {
         if (typeof window === 'undefined' || !window.location.href) {
@@ -254,7 +268,7 @@ export class URLTriggerMatching implements TriggerStatusMatching {
         const urlMatches = sessionRecordingUrlTriggerMatches(url, this._urlTriggers, this._compiledTriggerRegexes)
 
         if (!isActivated && urlMatches) {
-            onActivate('url')
+            onActivate('url', url)
         }
     }
 
@@ -372,6 +386,21 @@ export class EventTriggerMatching implements TriggerStatusMatching {
         return result
     }
 
+    checkEventTriggerConditions(
+        eventName: string,
+        onActivate: (triggerType: TriggerType, matchDetail?: string) => void,
+        sessionId: string
+    ) {
+        if (this._eventTriggers.length === 0) {
+            return
+        }
+
+        const isActivated = this._eventTriggerStatus(sessionId) === TRIGGER_ACTIVATED
+        if (!isActivated && this._eventTriggers.includes(eventName)) {
+            onActivate('event', eventName)
+        }
+    }
+
     stop(): void {
         // no-op
     }
@@ -379,6 +408,10 @@ export class EventTriggerMatching implements TriggerStatusMatching {
 
 // we need a no-op matcher before we can lazy-load the other matches, since all matchers wait on remote config anyway
 export function nullMatchSessionRecordingStatus(triggersStatus: RecordingTriggersStatus): SessionRecordingStatus {
+    if (triggersStatus.rrwebError) {
+        return RRWEB_ERROR
+    }
+
     if (!triggersStatus.isRecordingEnabled) {
         return DISABLED
     }
@@ -387,6 +420,10 @@ export function nullMatchSessionRecordingStatus(triggersStatus: RecordingTrigger
 }
 
 export function anyMatchSessionRecordingStatus(triggersStatus: RecordingTriggersStatus): SessionRecordingStatus {
+    if (triggersStatus.rrwebError) {
+        return RRWEB_ERROR
+    }
+
     if (!triggersStatus.receivedFlags) {
         return BUFFERING
     }
@@ -430,6 +467,10 @@ export function anyMatchSessionRecordingStatus(triggersStatus: RecordingTriggers
 }
 
 export function allMatchSessionRecordingStatus(triggersStatus: RecordingTriggersStatus): SessionRecordingStatus {
+    if (triggersStatus.rrwebError) {
+        return RRWEB_ERROR
+    }
+
     if (!triggersStatus.receivedFlags) {
         return BUFFERING
     }

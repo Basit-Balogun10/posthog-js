@@ -101,6 +101,7 @@ export interface TokenUsage {
 export interface GetPromptOptions {
   cacheTtlSeconds?: number
   fallback?: string
+  version?: number
 }
 
 /**
@@ -135,6 +136,7 @@ export type PromptVariables = Record<string, string | number | boolean>
  */
 export interface PromptsDirectOptions {
   personalApiKey: string
+  projectApiKey: string
   host?: string
   defaultCacheTtlSeconds?: number
 }

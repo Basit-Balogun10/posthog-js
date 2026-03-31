@@ -1,6 +1,7 @@
 /* eslint-disable compat/compat */
 /// <reference lib="dom" />
 
+import { TextDecoder } from 'util'
 import { extendURLParams, request } from '../request'
 import { Compression, RequestWithOptions } from '../types'
 
@@ -16,7 +17,7 @@ jest.mock('../utils/globals', () => ({
 import { fetch, XMLHttpRequest, navigator } from '../utils/globals'
 import { uuidv7 } from '../uuidv7'
 
-jest.mock('../config', () => ({ DEBUG: false, LIB_VERSION: '1.23.45' }))
+jest.mock('../config', () => ({ DEBUG: false, LIB_VERSION: '1.23.45', LIB_NAME: 'web', JS_SDK_VERSION: '1.23.45' }))
 
 const flushPromises = async () => {
     jest.useRealTimers()
@@ -400,14 +401,10 @@ describe('request', () => {
                     })
                 )
                 expect(mockedXHR.send).toHaveBeenCalledTimes(1)
-                expect(mockedXHR.send.mock.calls[0][0]).toBeInstanceOf(Blob)
-                // Decode and check the blob content
+                expect(mockedXHR.send.mock.calls[0][0]).toBeInstanceOf(ArrayBuffer)
+                // Decode and check the ArrayBuffer content
 
-                const res = await new Promise((resolve) => {
-                    const reader = new FileReader()
-                    reader.onload = () => resolve(reader.result)
-                    reader.readAsText(mockedXHR.send.mock.calls[0][0])
-                })
+                const res = new TextDecoder().decode(mockedXHR.send.mock.calls[0][0] as ArrayBuffer)
 
                 expect(res).toMatchInlineSnapshot(`
                 "�      �VJ��W�RJJ,R� ��+�
@@ -508,10 +505,10 @@ describe('request', () => {
                     expect.any(Blob)
                 )
                 const blob = mockedNavigator?.sendBeacon.mock.calls[0][1] as Blob
-
-                const reader = new FileReader()
-                const result = await new Promise((resolve) => {
-                    reader.onload = () => resolve(reader.result)
+                expect(blob.type).toBe('text/plain')
+                const result = await new Promise<string>((resolve) => {
+                    const reader = new FileReader()
+                    reader.onload = () => resolve(reader.result as string)
                     reader.readAsText(blob)
                 })
 

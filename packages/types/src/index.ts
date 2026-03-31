@@ -28,11 +28,16 @@ export type {
     FeatureFlagMetadata,
     EvaluationReason,
     FeatureFlagResult,
+    FeatureFlagOptions,
     RemoteConfigFeatureFlagCallback,
     EarlyAccessFeature,
     EarlyAccessFeatureStage,
     EarlyAccessFeatureCallback,
     EarlyAccessFeatureResponse,
+    FeatureFlagOverrides,
+    FeatureFlagPayloadOverrides,
+    FeatureFlagOverrideOptions,
+    OverrideFeatureFlagsOptions,
 } from './feature-flags'
 
 // Request types
@@ -79,3 +84,6 @@ export type { SurveyRenderReason } from './survey'
 
 // Toolbar types
 export type { ToolbarParams, ToolbarUserIntent, ToolbarSource, ToolbarVersion } from './toolbar'
+
+// Tree-shakeable extension types
+export type { TreeShakeableConfig, TreeShakeable } from './tree-shakeable'

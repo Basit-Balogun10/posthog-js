@@ -14,6 +14,8 @@ import type {
     GetTicketsOptions,
     GetTicketsResponse,
     MarkAsReadResponse,
+    RestoreFromTokenResponse,
+    RequestRestoreLinkResponse,
     SendMessageResponse,
     UserProvidedTraits,
 } from '../posthog-conversations-types'
@@ -179,6 +181,7 @@ export type PostHogExtensionKind =
 export interface LazyLoadedSessionRecordingInterface {
     start: (startReason?: SessionStartReason) => void
     stop: () => void
+    discard: () => void
     sessionId: string
     status: SessionRecordingStatus
     onRRwebEmit: (rawEvent: eventWithTime) => void
@@ -210,6 +213,9 @@ export interface LazyLoadedConversationsInterface {
     getMessages: (ticketId?: string, after?: string) => Promise<GetMessagesResponse>
     markAsRead: (ticketId?: string) => Promise<MarkAsReadResponse>
     getTickets: (options?: GetTicketsOptions) => Promise<GetTicketsResponse>
+    requestRestoreLink: (email: string) => Promise<RequestRestoreLinkResponse>
+    restoreFromToken: (restoreToken: string) => Promise<RestoreFromTokenResponse>
+    restoreFromUrlToken: () => Promise<RestoreFromTokenResponse | null>
     getCurrentTicketId: () => string | null
     getWidgetSessionId: () => string
 }
@@ -228,7 +234,7 @@ interface PostHogExtensions {
         wrapUnhandledRejection: (captureFn: (props: ErrorTracking.ErrorProperties) => void) => () => void
         wrapConsoleError: (captureFn: (props: ErrorTracking.ErrorProperties) => void) => () => void
     }
-    rrweb?: { record: any; version: string }
+    rrweb?: { record: any; version: string; wasMaxDepthReached?: () => boolean; resetMaxDepthState?: () => void }
     rrwebPlugins?: { getRecordConsolePlugin: any; getRecordNetworkPlugin?: any }
     generateSurveys?: (posthog: PostHog, isSurveysEnabled: boolean) => any | undefined
     generateProductTours?: (posthog: PostHog, isEnabled: boolean) => any | undefined
@@ -272,10 +278,6 @@ if (typeof File === 'undefined') {
     ;(global as any).File = function () {}
 }
 
-export const ArrayProto = Array.prototype
-export const nativeForEach = ArrayProto.forEach
-export const nativeIndexOf = ArrayProto.indexOf
-
 export const navigator = global?.navigator
 export const document = global?.document
 export const location = global?.location
@@ -283,6 +285,7 @@ export const fetch = global?.fetch
 export const XMLHttpRequest =
     global?.XMLHttpRequest && 'withCredentials' in new global.XMLHttpRequest() ? global.XMLHttpRequest : undefined
 export const AbortController = global?.AbortController
+export const CompressionStream = global?.CompressionStream
 export const userAgent = navigator?.userAgent
 export const assignableWindow: AssignableWindow = win ?? ({} as any)
 

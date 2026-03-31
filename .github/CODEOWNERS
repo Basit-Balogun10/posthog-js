@@ -1,6 +1,9 @@
 # the recorder file can have unexpected impact on users' sites
 packages/browser/src/entrypoints/recorder.ts           @PostHog/team-replay
 
+# Network recorder
+packages/browser/src/extensions/replay/external/network-plugin.ts @PostHog/team-client-libraries
+
 # Surveys
 packages/browser/src/extensions/surveys/               @PostHog/team-surveys
 packages/browser/src/extensions/surveys.tsx            @PostHog/team-surveys
@@ -12,9 +15,7 @@ packages/browser/src/utils/survey-event-receiver.ts    @PostHog/team-surveys
 packages/browser/src/utils/survey-utils.ts             @PostHog/team-surveys
 
 # Mobile
-packages/react-native/                                 @PostHog/team-mobile
-examples/example_rn_macos/                             @PostHog/team-mobile
-packages/example-expo-53/                              @PostHog/team-mobile
+packages/react-native/                                 @PostHog/team-client-libraries
 
 # AI
 /packages/ai/package.json                              @PostHog/team-llm-analytics

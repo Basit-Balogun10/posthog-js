@@ -1,5 +1,229 @@
 # @posthog/types
 
+## 1.364.4
+
+## 1.364.3
+
+## 1.364.2
+
+## 1.364.1
+
+## 1.364.0
+
+## 1.363.6
+
+## 1.363.5
+
+### Patch Changes
+
+- [#3274](https://github.com/PostHog/posthog-js/pull/3274) [`ba08262`](https://github.com/PostHog/posthog-js/commit/ba08262a0bcf4ae1db3ef3bb841e0ad07002fbea) Thanks [@pauldambra](https://github.com/pauldambra)! - fix: document visibility change shoudln't capture dead click
+  (2026-03-25)
+
+## 1.363.4
+
+## 1.363.3
+
+## 1.363.2
+
+## 1.363.1
+
+## 1.363.0
+
+### Patch Changes
+
+- [#3245](https://github.com/PostHog/posthog-js/pull/3245) [`1acd6fd`](https://github.com/PostHog/posthog-js/commit/1acd6fdfaaa46da71ca15bba2916c3bb81c3e7ef) Thanks [@dmarticus](https://github.com/dmarticus)! - handle plain array and object forms in overrideFeatureFlags
+  (2026-03-20)
+
+## 1.362.0
+
+## 1.361.1
+
+## 1.361.0
+
+### Minor Changes
+
+- [#3241](https://github.com/PostHog/posthog-js/pull/3241) [`fe1fd7b`](https://github.com/PostHog/posthog-js/commit/fe1fd7b222b2ca51164e01fceca892628efac89c) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - feat: add `advanced_feature_flags_dedup_per_session` config option to scope `$feature_flag_called` deduplication to the current session
+  (2026-03-18)
+
+### Patch Changes
+
+- [#3201](https://github.com/PostHog/posthog-js/pull/3201) [`552c018`](https://github.com/PostHog/posthog-js/commit/552c01843b9ae1fbf8fdf1a2e98e0b7fdc37c851) Thanks [@frankh](https://github.com/frankh)! - Add a serviceName config option to logs config
+  (2026-03-18)
+
+## 1.360.2
+
+## 1.360.1
+
+## 1.360.0
+
+### Minor Changes
+
+- [#3207](https://github.com/PostHog/posthog-js/pull/3207) [`c5a37cb`](https://github.com/PostHog/posthog-js/commit/c5a37cbc248515ff5333f425ffa270136169d47f) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - feat: Add TreeShakeable<T>
+  (2026-03-09)
+
+## 1.359.1
+
+## 1.359.0
+
+## 1.358.1
+
+## 1.358.0
+
+## 1.357.2
+
+## 1.357.1
+
+## 1.357.0
+
+### Minor Changes
+
+- [#3169](https://github.com/PostHog/posthog-js/pull/3169) [`4f885c0`](https://github.com/PostHog/posthog-js/commit/4f885c067f3e46398629f4163a204206e71d4757) Thanks [@marandaneto](https://github.com/marandaneto)! - feat: add local sampleRate config for session recording
+  (2026-03-02)
+
+## 1.356.2
+
+## 1.356.1
+
+## 1.356.0
+
+### Minor Changes
+
+- [#3142](https://github.com/PostHog/posthog-js/pull/3142) [`ec54fd8`](https://github.com/PostHog/posthog-js/commit/ec54fd8fcfda496879e456361fb97de504063393) Thanks [@dmarticus](https://github.com/dmarticus)! - Add feature_flag_cache_ttl_ms config to prevent stale flag values
+  (2026-02-26)
+
+### Patch Changes
+
+- [#3145](https://github.com/PostHog/posthog-js/pull/3145) [`d741668`](https://github.com/PostHog/posthog-js/commit/d741668f6f966c729308d3b71fd7deebe16411f0) Thanks [@dmarticus](https://github.com/dmarticus)! - Adds a remote_config_refresh_interval_ms config option to control how often feature flags are automatically refreshed in long-running sessions.
+  (2026-02-26)
+
+## 1.355.0
+
+## 1.354.4
+
+## 1.354.3
+
+## 1.354.2
+
+## 1.354.1
+
+## 1.354.0
+
+## 1.353.1
+
+## 1.353.0
+
+## 1.352.1
+
+## 1.352.0
+
+## 1.351.4
+
+### Patch Changes
+
+- [#3119](https://github.com/PostHog/posthog-js/pull/3119) [`2649a9a`](https://github.com/PostHog/posthog-js/commit/2649a9a6eeef19c67036c1298b5b5b6ba61eda8e) Thanks [@dmarticus](https://github.com/dmarticus)! - Adds a fresh option to getFeatureFlag(), getFeatureFlagResult(), and isFeatureEnabled() that only returns values loaded from the server, not cached localStorage values.
+  (2026-02-19)
+
+## 1.351.3
+
+## 1.351.2
+
+## 1.351.1
+
+## 1.351.0
+
+### Patch Changes
+
+- [#3107](https://github.com/PostHog/posthog-js/pull/3107) [`9dbc05e`](https://github.com/PostHog/posthog-js/commit/9dbc05ed65ddc8c37c9262b9aebfc51d0c748971) Thanks [@ablaszkiewicz](https://github.com/ablaszkiewicz)! - warning on manual capture('$exception')
+  (2026-02-18)
+
+## 1.350.0
+
+### Minor Changes
+
+- [#2895](https://github.com/PostHog/posthog-js/pull/2895) [`1b47203`](https://github.com/PostHog/posthog-js/commit/1b47203a5cc1b8f76e224101975e462cd777e2ee) Thanks [@benjackwhite](https://github.com/benjackwhite)! - RemoteConfig (config.js) has been loaded for ages and is in use by us in production. This PR makes it the sole config loading mechanism for posthog-js, removing the legacy /flags/?v=2&config=true path and the \_\_preview_remote_config gate.
+  (2026-02-17)
+
+## 1.349.0
+
+### Minor Changes
+
+- [#3105](https://github.com/PostHog/posthog-js/pull/3105) [`f707ec9`](https://github.com/PostHog/posthog-js/commit/f707ec95e4b718bffe48e3e6be9afbc855b39f8f) Thanks [@adboio](https://github.com/adboio)! - add support for product tours localization
+  (2026-02-17)
+
+## 1.348.0
+
+## 1.347.2
+
+## 1.347.1
+
+## 1.347.0
+
+## 1.346.0
+
+## 1.345.5
+
+### Patch Changes
+
+- [#3060](https://github.com/PostHog/posthog-js/pull/3060) [`7437982`](https://github.com/PostHog/posthog-js/commit/7437982efa2c7a7a9ede563ddd97beba5c70d650) Thanks [@pauldambra](https://github.com/pauldambra)! - Add missing `featureFlags` property and `OverrideFeatureFlagsOptions` type to `PostHog` interface, restore `set_config` to the loaded callback type, and add `featureFlagsReloading` to `on()` event types
+  (2026-02-11)
+
+## 1.345.4
+
+## 1.345.3
+
+## 1.345.2
+
+## 1.345.1
+
+## 1.345.0
+
+### Minor Changes
+
+- [#2919](https://github.com/PostHog/posthog-js/pull/2919) [`fe8090c`](https://github.com/PostHog/posthog-js/commit/fe8090c00f0122ed4aad37465f43480c50392506) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - Add `error` property to `RequestResponse`
+  (2026-02-09)
+
+## 1.344.0
+
+## 1.343.2
+
+## 1.343.1
+
+## 1.343.0
+
+## 1.342.1
+
+## 1.342.0
+
+## 1.341.2
+
+## 1.341.1
+
+## 1.341.0
+
+## 1.340.0
+
+## 1.339.1
+
+## 1.339.0
+
+### Minor Changes
+
+- [#3006](https://github.com/PostHog/posthog-js/pull/3006) [`b3ec434`](https://github.com/PostHog/posthog-js/commit/b3ec4346e77917121c4fe7bfd966d09850df00f6) Thanks [@robbie-c](https://github.com/robbie-c)! - Add a function isTestUser() and config option test_user_hostname
+  (2026-02-03)
+
+## 1.338.1
+
+## 1.338.0
+
+## 1.337.1
+
+## 1.337.0
+
+### Minor Changes
+
+- [#2996](https://github.com/PostHog/posthog-js/pull/2996) [`7768010`](https://github.com/PostHog/posthog-js/commit/77680105f1e8baf5ed1934d423494793d11ff01a) Thanks [@matheus-vb](https://github.com/matheus-vb)! - Filter out flags marked as failed before merging with cached values, preventing transient backend errors from overwriting previously evaluated flag states
+  (2026-02-03)
+
 ## 1.336.4
 
 ## 1.336.3

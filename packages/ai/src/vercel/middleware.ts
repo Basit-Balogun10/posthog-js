@@ -22,7 +22,6 @@ import {
   calculateWebSearchCount,
   sendEventWithErrorToPosthog,
 } from '../utils'
-import { Buffer } from 'buffer'
 import { redactBase64DataUrl } from '../sanitization'
 import { isString } from '../typeGuards'
 
@@ -171,11 +170,12 @@ const mapVercelPrompt = (messages: LanguageModelPrompt): PostHogInput[] => {
 
   try {
     // Trim the inputs array until its JSON size fits within MAX_OUTPUT_SIZE
+    const encoder = new TextEncoder()
     let serialized = JSON.stringify(inputs)
     let removedCount = 0
     // We need to keep track of the initial size of the inputs array because we're going to be mutating it
     const initialSize = inputs.length
-    for (let i = 0; i < initialSize && Buffer.byteLength(serialized, 'utf8') > MAX_OUTPUT_SIZE; i++) {
+    for (let i = 0; i < initialSize && encoder.encode(serialized).byteLength > MAX_OUTPUT_SIZE; i++) {
       inputs.shift()
       removedCount++
       serialized = JSON.stringify(inputs)
@@ -427,7 +427,8 @@ export const wrapVercelLanguageModel = <T extends LanguageModel>(
             mergedOptions.posthogModelOverride ?? (result.response?.modelId ? result.response.modelId : model.modelId)
           const provider = mergedOptions.posthogProviderOverride ?? extractProvider(model)
           const baseURL = '' // cannot currently get baseURL from vercel
-          const content = mapVercelOutput(result.content as LanguageModelContent[])
+          // result.content is undefined when the model returns only tool calls with no text output
+          const content = mapVercelOutput((result.content ?? []) as LanguageModelContent[])
           const latency = (Date.now() - startTime) / 1000
           const providerMetadata = result.providerMetadata
           const additionalTokenValues = extractAdditionalTokenValues(providerMetadata)

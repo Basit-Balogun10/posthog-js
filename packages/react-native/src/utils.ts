@@ -1,5 +1,8 @@
 import { Platform } from 'react-native'
 
+// Re-export remote config utilities from core
+export { getRemoteConfigBool, getRemoteConfigNumber, isValidSampleRate } from '@posthog/core'
+
 type ReactNativeGlobal = {
   HermesInternal?: {
     enablePromiseRejectionTracker?: (args: {

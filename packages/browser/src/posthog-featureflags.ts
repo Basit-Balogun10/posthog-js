@@ -13,16 +13,23 @@ import {
     EarlyAccessFeatureStage,
     FeatureFlagDetail,
     FeatureFlagResult,
+    FeatureFlagOptions,
+    OverrideFeatureFlagsOptions,
 } from './types'
 import { PostHogPersistence } from './posthog-persistence'
+import type { Extension } from './extensions/types'
 
 import {
     PERSISTENCE_EARLY_ACCESS_FEATURES,
+    DEVICE_ID,
     PERSISTENCE_FEATURE_FLAG_DETAILS,
+    PERSISTENCE_FEATURE_FLAG_ERRORS,
+    PERSISTENCE_FEATURE_FLAG_EVALUATED_AT,
     ENABLED_FEATURE_FLAGS,
     STORED_GROUP_PROPERTIES_KEY,
     STORED_PERSON_PROPERTIES_KEY,
     FLAG_CALL_REPORTED,
+    FLAG_CALL_REPORTED_SESSION_ID,
 } from './constants'
 
 import { isUndefined, isArray, isNull } from '@posthog/core'
@@ -31,13 +38,39 @@ import { getTimezone } from './utils/event-utils'
 
 const logger = createLogger('[FeatureFlags]')
 const forceDebugLogger = createLogger('[FeatureFlags]', { debugEnabled: true })
+const FLAG_TIMEOUT_MSG = '" failed. Feature flags didn\'t load in time.'
+
+/**
+ * Error type constants for the $feature_flag_error property.
+ *
+ * These values are sent in analytics events to track flag evaluation failures.
+ * They should not be changed without considering impact on existing dashboards
+ * and queries that filter on these values.
+ */
+export const FeatureFlagError = {
+    ERRORS_WHILE_COMPUTING: 'errors_while_computing_flags',
+    FLAG_MISSING: 'flag_missing',
+    QUOTA_LIMITED: 'quota_limited',
+    TIMEOUT: 'timeout',
+    CONNECTION_ERROR: 'connection_error',
+    UNKNOWN_ERROR: 'unknown_error',
+    apiError: (status: number | string) => `api_error_${status}`,
+} as const
 
 const PERSISTENCE_ACTIVE_FEATURE_FLAGS = '$active_feature_flags'
 const PERSISTENCE_OVERRIDE_FEATURE_FLAGS = '$override_feature_flags'
 const PERSISTENCE_FEATURE_FLAG_PAYLOADS = '$feature_flag_payloads'
 const PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS = '$override_feature_flag_payloads'
 const PERSISTENCE_FEATURE_FLAG_REQUEST_ID = '$feature_flag_request_id'
-const PERSISTENCE_FEATURE_FLAG_EVALUATED_AT = '$feature_flag_evaluated_at'
+
+/** Converts an array of flag names to a Record where each flag is set to true. */
+const arrayToFlagsRecord = (flags: string[]): Record<string, true> => {
+    const flagsObj: Record<string, true> = {}
+    for (let i = 0; i < flags.length; i++) {
+        flagsObj[flags[i]] = true
+    }
+    return flagsObj
+}
 
 export const filterActiveFeatureFlags = (featureFlags?: Record<string, string | boolean>) => {
     const activeFeatureFlags: Record<string, string | boolean> = {}
@@ -135,7 +168,7 @@ const normalizeFlagsResponse = (response: Partial<FlagsResponse>): Partial<Flags
     const flagDetails = response['flags']
 
     if (flagDetails) {
-        // This is a v=4 request.
+        // This is a /flags?v=2 request.
 
         // Map of flag keys to flag values: Record<string, string | boolean>
         response.featureFlags = Object.fromEntries(
@@ -156,32 +189,13 @@ const normalizeFlagsResponse = (response: Partial<FlagsResponse>): Partial<Flags
     return response
 }
 
-type FeatureFlagOverrides = {
-    [flagName: string]: string | boolean
-}
+export const QuotaLimitedResource = {
+    FeatureFlags: 'feature_flags',
+    Recordings: 'recordings',
+} as const
+export type QuotaLimitedResource = (typeof QuotaLimitedResource)[keyof typeof QuotaLimitedResource]
 
-type FeatureFlagPayloadOverrides = {
-    [flagName: string]: JsonType
-}
-
-type FeatureFlagOverrideOptions = {
-    flags?: boolean | string[] | FeatureFlagOverrides
-    payloads?: FeatureFlagPayloadOverrides
-    suppressWarning?: boolean
-}
-
-type OverrideFeatureFlagsOptions =
-    | boolean // clear all overrides
-    | string[] // enable list of flags
-    | FeatureFlagOverrides // set variants directly
-    | FeatureFlagOverrideOptions
-
-export enum QuotaLimitedResource {
-    FeatureFlags = 'feature_flags',
-    Recordings = 'recordings',
-}
-
-export class PostHogFeatureFlags {
+export class PostHogFeatureFlags implements Extension {
     _override_warning: boolean = false
     featureFlagEventHandlers: FeatureFlagsCallback[]
     $anon_distinct_id: string | undefined
@@ -190,22 +204,58 @@ export class PostHogFeatureFlags {
     private _reloadingDisabled: boolean = false
     private _additionalReloadRequested: boolean = false
     private _reloadDebouncer?: any
-    private _flagsCalled: boolean = false
     private _flagsLoadedFromRemote: boolean = false
     private _hasLoggedDeprecationWarning: boolean = false
+    private _staleCacheRefreshTriggered: boolean = false
 
     constructor(private _instance: PostHog) {
         this.featureFlagEventHandlers = []
     }
 
+    private get _config() {
+        return this._instance.config
+    }
+
+    private get _persistence() {
+        return this._instance.persistence
+    }
+
+    private _prop(key: string): any {
+        return this._instance.get_property(key)
+    }
+
+    /**
+     * Check if the feature flag cache is stale based on the configured TTL.
+     */
+    private _isCacheStale(): boolean {
+        return this._persistence?._isFeatureFlagCacheStale(this._config.feature_flag_cache_ttl_ms) ?? false
+    }
+
+    /**
+     * Triggers a debounced reload when cache staleness is first detected.
+     * Returns true if cache is stale, false otherwise.
+     */
+    private _checkAndTriggerStaleRefresh(): boolean {
+        if (!this._isCacheStale()) {
+            return false
+        }
+        // Only trigger refresh once per stale period
+        if (!this._staleCacheRefreshTriggered && !this._requestInFlight) {
+            this._staleCacheRefreshTriggered = true
+            logger.warn('Feature flag cache is stale, triggering refresh...')
+            this.reloadFeatureFlags()
+        }
+        return true
+    }
+
     private _getValidEvaluationEnvironments(): string[] {
         // Support both evaluation_contexts (new) and evaluation_environments (deprecated)
-        const envs = this._instance.config.evaluation_contexts ?? this._instance.config.evaluation_environments
+        const envs = this._config.evaluation_contexts ?? this._config.evaluation_environments
 
         // Log deprecation warning if using old field (only once)
         if (
-            this._instance.config.evaluation_environments &&
-            !this._instance.config.evaluation_contexts &&
+            this._config.evaluation_environments &&
+            !this._config.evaluation_contexts &&
             !this._hasLoggedDeprecationWarning
         ) {
             logger.warn(
@@ -231,21 +281,60 @@ export class PostHogFeatureFlags {
         return this._getValidEvaluationEnvironments().length > 0
     }
 
-    flags(): void {
-        if (this._instance.config.__preview_remote_config) {
-            // If remote config is enabled we don't call /flags and we mark it as called so that we don't simulate it
-            this._flagsCalled = true
-            return
+    initialize() {
+        const { config } = this._instance
+        const bootstrapFlags = config.bootstrap?.featureFlags ?? {}
+        const hasBootstrappedFlags = Object.keys(bootstrapFlags).length
+        if (hasBootstrappedFlags) {
+            const bootstrapPayloads = config.bootstrap?.featureFlagPayloads ?? {}
+            const activeFlags = Object.keys(bootstrapFlags)
+                .filter((flag) => !!bootstrapFlags[flag])
+                .reduce((res: Record<string, string | boolean>, key) => {
+                    res[key] = bootstrapFlags[key] || false
+                    return res
+                }, {})
+            const featureFlagPayloads = Object.keys(bootstrapPayloads)
+                .filter((key) => activeFlags[key])
+                .reduce((res: Record<string, JsonType>, key) => {
+                    if (bootstrapPayloads[key]) {
+                        res[key] = bootstrapPayloads[key]
+                    }
+                    return res
+                }, {})
+
+            this.receivedFeatureFlags({ featureFlags: activeFlags, featureFlagPayloads })
+        }
+    }
+
+    updateFlags(
+        flags: Record<string, boolean | string>,
+        payloads?: Record<string, JsonType>,
+        options?: { merge?: boolean }
+    ): void {
+        // If merging, combine with existing flags
+        const existingFlags = options?.merge ? this.getFlagVariants() : {}
+        const existingPayloads = options?.merge ? this.getFlagPayloads() : {}
+        const finalFlags = { ...existingFlags, ...flags }
+        const finalPayloads = { ...existingPayloads, ...payloads }
+
+        // Convert simple flags to v4 format to avoid deprecation warning
+        const flagDetails: Record<string, FeatureFlagDetail> = {}
+        for (const [key, value] of Object.entries(finalFlags)) {
+            const isVariant = typeof value === 'string'
+            flagDetails[key] = {
+                key,
+                enabled: isVariant ? true : Boolean(value),
+                variant: isVariant ? value : undefined,
+                reason: undefined,
+                // id: 0 indicates manually injected flags (not from server evaluation)
+                metadata: !isUndefined(finalPayloads?.[key])
+                    ? { id: 0, version: undefined, description: undefined, payload: finalPayloads[key] }
+                    : undefined,
+            }
         }
 
-        // TRICKY: We want to disable flags if we don't have a queued reload, and one of the settings exist for disabling on first load
-        const disableFlags =
-            !this._reloadDebouncer &&
-            (this._instance.config.advanced_disable_feature_flags ||
-                this._instance.config.advanced_disable_feature_flags_on_first_load)
-
-        this._callFlagsEndpoint({
-            disableFlags,
+        this.receivedFeatureFlags({
+            flags: flagDetails,
         })
     }
 
@@ -258,10 +347,10 @@ export class PostHogFeatureFlags {
     }
 
     getFlagsWithDetails(): Record<string, FeatureFlagDetail> {
-        const flagDetails = this._instance.get_property(PERSISTENCE_FEATURE_FLAG_DETAILS)
+        const flagDetails = this._prop(PERSISTENCE_FEATURE_FLAG_DETAILS)
 
-        const overridenFlags = this._instance.get_property(PERSISTENCE_OVERRIDE_FEATURE_FLAGS)
-        const overriddenPayloads = this._instance.get_property(PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS)
+        const overridenFlags = this._prop(PERSISTENCE_OVERRIDE_FEATURE_FLAGS)
+        const overriddenPayloads = this._prop(PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS)
 
         if (!overriddenPayloads && !overridenFlags) {
             return flagDetails || {}
@@ -327,8 +416,8 @@ export class PostHogFeatureFlags {
     }
 
     getFlagVariants(): Record<string, string | boolean> {
-        const enabledFlags = this._instance.get_property(ENABLED_FEATURE_FLAGS)
-        const overriddenFlags = this._instance.get_property(PERSISTENCE_OVERRIDE_FEATURE_FLAGS)
+        const enabledFlags = this._prop(ENABLED_FEATURE_FLAGS)
+        const overriddenFlags = this._prop(PERSISTENCE_OVERRIDE_FEATURE_FLAGS)
         if (!overriddenFlags) {
             return enabledFlags || {}
         }
@@ -350,8 +439,8 @@ export class PostHogFeatureFlags {
     }
 
     getFlagPayloads(): Record<string, JsonType> {
-        const flagPayloads = this._instance.get_property(PERSISTENCE_FEATURE_FLAG_PAYLOADS)
-        const overriddenPayloads = this._instance.get_property(PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS)
+        const flagPayloads = this._prop(PERSISTENCE_FEATURE_FLAG_PAYLOADS)
+        const overriddenPayloads = this._prop(PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS)
 
         if (!overriddenPayloads) {
             return flagPayloads || {}
@@ -383,7 +472,7 @@ export class PostHogFeatureFlags {
      * 2. Delay a few milliseconds after each reloadFeatureFlags call to batch subsequent changes together
      */
     reloadFeatureFlags(): void {
-        if (this._reloadingDisabled || this._instance.config.advanced_disable_feature_flags) {
+        if (this._reloadingDisabled || this._config.advanced_disable_feature_flags) {
             // If reloading has been explicitly disabled then we don't want to do anything
             // Or if feature flags are disabled
             return
@@ -393,6 +482,9 @@ export class PostHogFeatureFlags {
             // If we're already in a debounce then we don't want to do anything
             return
         }
+
+        // Emit event so consumers know flags are being reloaded
+        this._instance._internalEventEmitter.emit('featureFlagsReloading', true)
 
         // Debounce multiple calls on the same tick
         this._reloadDebouncer = setTimeout(() => {
@@ -422,10 +514,6 @@ export class PostHogFeatureFlags {
         this._reloadingDisabled = isPaused
     }
 
-    /**
-     * NOTE: This is used both for flags and remote config. Once the RemoteConfig is fully released this will essentially only
-     * be for flags and can eventually be replaced with the new flags endpoint
-     */
     _callFlagsEndpoint(options?: { disableFlags?: boolean }): void {
         // Ensure we don't have double queued /flags requests
         this._clearDebouncer()
@@ -437,8 +525,8 @@ export class PostHogFeatureFlags {
             this._additionalReloadRequested = true
             return
         }
-        const token = this._instance.config.token
-        const deviceId = this._instance.get_property('$device_id')
+        const token = this._config.token
+        const deviceId = this._prop(DEVICE_ID)
 
         const data: Record<string, any> = {
             token: token,
@@ -446,10 +534,11 @@ export class PostHogFeatureFlags {
             groups: this._instance.getGroups(),
             $anon_distinct_id: this.$anon_distinct_id,
             person_properties: {
-                ...(this._instance.persistence?.get_initial_props() || {}),
-                ...(this._instance.get_property(STORED_PERSON_PROPERTIES_KEY) || {}),
+                ...(this._persistence?.get_initial_props() || {}),
+                ...(this._prop(STORED_PERSON_PROPERTIES_KEY) || {}),
             },
-            group_properties: this._instance.get_property(STORED_GROUP_PROPERTIES_KEY),
+            group_properties: this._prop(STORED_GROUP_PROPERTIES_KEY),
+            timezone: getTimezone(),
         }
 
         // Add device_id if available (handle cookieless mode where it's null)
@@ -457,7 +546,7 @@ export class PostHogFeatureFlags {
             data.$device_id = deviceId
         }
 
-        if (options?.disableFlags || this._instance.config.advanced_disable_feature_flags) {
+        if (options?.disableFlags || this._config.advanced_disable_feature_flags) {
             data.disable_flags = true
         }
 
@@ -466,29 +555,19 @@ export class PostHogFeatureFlags {
             data.evaluation_contexts = this._getValidEvaluationEnvironments()
         }
 
-        // flags supports loading config data with the `config` query param, but if you're using remote config, you
-        // don't need to add that parameter because all the config data is loaded from the remote config endpoint.
-        const useRemoteConfigWithFlags = this._instance.config.__preview_remote_config
-
-        const flagsRoute = useRemoteConfigWithFlags ? '/flags/?v=2' : '/flags/?v=2&config=true'
-
-        const queryParams = this._instance.config.advanced_only_evaluate_survey_feature_flags
+        const queryParams = this._config.advanced_only_evaluate_survey_feature_flags
             ? '&only_evaluate_survey_feature_flags=true'
             : ''
 
-        const url = this._instance.requestRouter.endpointFor('flags', flagsRoute + queryParams)
-
-        if (useRemoteConfigWithFlags) {
-            data.timezone = getTimezone()
-        }
+        const url = this._instance.requestRouter.endpointFor('flags', '/flags/?v=2' + queryParams)
 
         this._requestInFlight = true
         this._instance._send_request({
             method: 'POST',
             url,
             data,
-            compression: this._instance.config.disable_compression ? undefined : Compression.Base64,
-            timeout: this._instance.config.feature_flag_request_timeout_ms,
+            compression: this._config.disable_compression ? undefined : Compression.Base64,
+            timeout: this._config.feature_flag_request_timeout_ms,
             callback: (response) => {
                 let errorsLoading = true
 
@@ -504,12 +583,6 @@ export class PostHogFeatureFlags {
 
                 this._requestInFlight = false
 
-                // NB: this block is only reached if this._instance.config.__preview_remote_config is false
-                if (!this._flagsCalled) {
-                    this._flagsCalled = true
-                    this._instance._onRemoteConfig(response.json ?? {})
-                }
-
                 if (data.disable_flags && !this._additionalReloadRequested) {
                     // If flags are disabled then there is no need to call /flags again (flags are the only thing that may change)
                     // UNLESS, an additional reload is requested.
@@ -518,7 +591,33 @@ export class PostHogFeatureFlags {
 
                 this._flagsLoadedFromRemote = !errorsLoading
 
-                if (response.json && response.json.quotaLimited?.includes(QuotaLimitedResource.FeatureFlags)) {
+                const flagErrors: string[] = []
+                if (response.error) {
+                    if (response.error instanceof Error) {
+                        flagErrors.push(
+                            response.error.name === 'AbortError'
+                                ? FeatureFlagError.TIMEOUT
+                                : FeatureFlagError.CONNECTION_ERROR
+                        )
+                    } else {
+                        flagErrors.push(FeatureFlagError.UNKNOWN_ERROR)
+                    }
+                } else if (response.statusCode !== 200) {
+                    flagErrors.push(FeatureFlagError.apiError(response.statusCode))
+                }
+                if (response.json?.errorsWhileComputingFlags) {
+                    flagErrors.push(FeatureFlagError.ERRORS_WHILE_COMPUTING)
+                }
+                const isQuotaLimited = !!response.json?.quotaLimited?.includes(QuotaLimitedResource.FeatureFlags)
+                if (isQuotaLimited) {
+                    flagErrors.push(FeatureFlagError.QUOTA_LIMITED)
+                }
+
+                this._persistence?.register({
+                    [PERSISTENCE_FEATURE_FLAG_ERRORS]: flagErrors,
+                })
+
+                if (isQuotaLimited) {
                     // log a warning and then early return
                     logger.warn(
                         'You have hit your feature flags quota limit, and will not be able to load feature flags until the quota is reset.  Please visit https://posthog.com/docs/billing/limits-alerts to learn more.'
@@ -538,19 +637,38 @@ export class PostHogFeatureFlags {
         })
     }
 
-    /*
+    /**
      * Get feature flag's value for user.
+     *
+     * By default, this method may return cached values from localStorage if the `/flags` endpoint
+     * hasn't responded yet. This reduces flicker but means you might briefly see stale values
+     * (e.g., a flag that was disabled on the server).
      *
      * ### Usage:
      *
      *     if(posthog.getFeatureFlag('my-flag') === 'some-variant') { // do something }
      *
-     * @param {Object|String} key Key of the feature flag.
-     * @param {Object|String} options (optional) If {send_event: false}, we won't send an $feature_flag_called event to PostHog.
+     *     // Only use fresh values from the server (returns undefined until /flags responds)
+     *     if(posthog.getFeatureFlag('my-flag', { fresh: true }) === 'some-variant') { // do something }
+     *
+     * @param {String} key Key of the feature flag.
+     * @param {Object} options Optional settings.
+     * @param {boolean} [options.send_event=true] If false, won't send a $feature_flag_called event to PostHog.
+     * @param {boolean} [options.fresh=false] If true, only returns values loaded from the server, not cached localStorage values.
+     *                  Use this when you need to ensure the flag value reflects the current server state,
+     *                  such as after disabling a flag. Returns undefined until the /flags endpoint responds.
+     * @returns {boolean | string | undefined} The flag value, or undefined if not found or not yet loaded.
      */
-    getFeatureFlag(key: string, options: { send_event?: boolean } = {}): boolean | string | undefined {
+    getFeatureFlag(key: string, options: FeatureFlagOptions = {}): boolean | string | undefined {
+        if (options.fresh && !this._flagsLoadedFromRemote) {
+            return undefined
+        }
         if (!this._hasLoadedFlags && !(this.getFlags() && this.getFlags().length > 0)) {
-            logger.warn('getFeatureFlag for key "' + key + '" failed. Feature flags didn\'t load in time.')
+            logger.warn('getFeatureFlag for key "' + key + FLAG_TIMEOUT_MSG)
+            return undefined
+        }
+        // Check if cache is stale and trigger refresh if needed
+        if (this._checkAndTriggerStaleRefresh()) {
             return undefined
         }
         const result = this.getFeatureFlagResult(key, options)
@@ -588,6 +706,10 @@ export class PostHogFeatureFlags {
      * Get a feature flag result including both the flag value and payload, while properly tracking the call.
      * This method emits the `$feature_flag_called` event by default.
      *
+     * By default, this method may return cached values from localStorage if the `/flags` endpoint
+     * hasn't responded yet. This reduces flicker but means you might briefly see stale values
+     * (e.g., a flag that was disabled on the server).
+     *
      * ### Usage:
      *
      *     const result = posthog.getFeatureFlagResult('my-flag')
@@ -595,14 +717,27 @@ export class PostHogFeatureFlags {
      *         console.log('Flag is enabled with payload:', result.payload)
      *     }
      *
+     *     // Only use fresh values from the server
+     *     const freshResult = posthog.getFeatureFlagResult('my-flag', { fresh: true })
+     *
      * @param {String} key Key of the feature flag.
      * @param {Object} [options] Options for the feature flag lookup.
      * @param {boolean} [options.send_event=true] If false, won't send the $feature_flag_called event.
+     * @param {boolean} [options.fresh=false] If true, only returns values loaded from the server, not cached localStorage values.
+     *                  Use this when you need to ensure the flag value reflects the current server state.
+     *                  Returns undefined until the /flags endpoint responds.
      * @returns {FeatureFlagResult | undefined} The feature flag result including key, enabled, variant, and payload.
      */
-    getFeatureFlagResult(key: string, options: { send_event?: boolean } = {}): FeatureFlagResult | undefined {
+    getFeatureFlagResult(key: string, options: FeatureFlagOptions = {}): FeatureFlagResult | undefined {
+        if (options.fresh && !this._flagsLoadedFromRemote) {
+            return undefined
+        }
         if (!this._hasLoadedFlags && !(this.getFlags() && this.getFlags().length > 0)) {
-            logger.warn('getFeatureFlagResult for key "' + key + '" failed. Feature flags didn\'t load in time.')
+            logger.warn('getFeatureFlagResult for key "' + key + FLAG_TIMEOUT_MSG)
+            return undefined
+        }
+        // Check if cache is stale and trigger refresh if needed
+        if (this._checkAndTriggerStaleRefresh()) {
             return undefined
         }
 
@@ -612,9 +747,22 @@ export class PostHogFeatureFlags {
         const payloads = this.getFlagPayloads()
         const payload = payloads[key]
         const flagReportValue = String(flagValue)
-        const requestId = this._instance.get_property(PERSISTENCE_FEATURE_FLAG_REQUEST_ID) || undefined
-        const evaluatedAt = this._instance.get_property(PERSISTENCE_FEATURE_FLAG_EVALUATED_AT) || undefined
-        const flagCallReported: Record<string, string[]> = this._instance.get_property(FLAG_CALL_REPORTED) || {}
+        const requestId = this._prop(PERSISTENCE_FEATURE_FLAG_REQUEST_ID) || undefined
+        const evaluatedAt = this._prop(PERSISTENCE_FEATURE_FLAG_EVALUATED_AT) || undefined
+        let flagCallReported: Record<string, string[]> = this._prop(FLAG_CALL_REPORTED) || {}
+
+        // When session-scoped dedup is enabled, reset the reported flags whenever the session changes.
+        if (this._config.advanced_feature_flags_dedup_per_session) {
+            const currentSessionId = this._instance.get_session_id()
+            const storedSessionId = this._prop(FLAG_CALL_REPORTED_SESSION_ID)
+            if (currentSessionId && currentSessionId !== storedSessionId) {
+                flagCallReported = {}
+                this._persistence?.register({
+                    [FLAG_CALL_REPORTED]: flagCallReported,
+                    [FLAG_CALL_REPORTED_SESSION_ID]: currentSessionId,
+                })
+            }
+        }
 
         if (options.send_event || !('send_event' in options)) {
             if (!(key in flagCallReported) || !flagCallReported[key].includes(flagReportValue)) {
@@ -623,18 +771,22 @@ export class PostHogFeatureFlags {
                 } else {
                     flagCallReported[key] = [flagReportValue]
                 }
-                this._instance.persistence?.register({ [FLAG_CALL_REPORTED]: flagCallReported })
+                this._persistence?.register({ [FLAG_CALL_REPORTED]: flagCallReported })
 
                 const flagDetails = this.getFeatureFlagDetails(key)
+                const errors: string[] = [...(this._prop(PERSISTENCE_FEATURE_FLAG_ERRORS) ?? [])]
+                if (isUndefined(flagValue)) {
+                    errors.push(FeatureFlagError.FLAG_MISSING)
+                }
+
                 const properties: Record<string, any | undefined> = {
                     $feature_flag: key,
                     $feature_flag_response: flagValue,
                     $feature_flag_payload: payload || null,
                     $feature_flag_request_id: requestId,
                     $feature_flag_evaluated_at: evaluatedAt,
-                    $feature_flag_bootstrapped_response: this._instance.config.bootstrap?.featureFlags?.[key] || null,
-                    $feature_flag_bootstrapped_payload:
-                        this._instance.config.bootstrap?.featureFlagPayloads?.[key] || null,
+                    $feature_flag_bootstrapped_response: this._config.bootstrap?.featureFlags?.[key] || null,
+                    $feature_flag_bootstrapped_payload: this._config.bootstrap?.featureFlagPayloads?.[key] || null,
                     // If we haven't yet received a response from the /flags endpoint, we must have used the bootstrapped value
                     $used_bootstrap_value: !this._flagsLoadedFromRemote,
                 }
@@ -663,6 +815,10 @@ export class PostHogFeatureFlags {
 
                 if (flagDetails?.metadata?.original_payload) {
                     properties.$feature_flag_original_payload = flagDetails?.metadata?.original_payload
+                }
+
+                if (errors.length) {
+                    properties.$feature_flag_error = errors.join(',')
                 }
 
                 this._instance.capture('$feature_flag_called', properties)
@@ -705,7 +861,7 @@ export class PostHogFeatureFlags {
      * @param {Function} [callback] The callback function will be called once the remote config feature flag payload has been fetched.
      */
     getRemoteConfigPayload(key: string, callback: RemoteConfigFeatureFlagCallback): void {
-        const token = this._instance.config.token
+        const token = this._config.token
         const data: Record<string, any> = {
             distinct_id: this._instance.get_distinct_id(),
             token,
@@ -718,10 +874,10 @@ export class PostHogFeatureFlags {
 
         this._instance._send_request({
             method: 'POST',
-            url: this._instance.requestRouter.endpointFor('flags', '/flags/?v=2&config=true'),
+            url: this._instance.requestRouter.endpointFor('flags', '/flags/?v=2'),
             data,
-            compression: this._instance.config.disable_compression ? undefined : Compression.Base64,
-            timeout: this._instance.config.feature_flag_request_timeout_ms,
+            compression: this._config.disable_compression ? undefined : Compression.Base64,
+            timeout: this._config.feature_flag_request_timeout_ms,
             callback: (response) => {
                 const flagPayloads = response.json?.['featureFlagPayloads']
                 callback(flagPayloads?.[key] || undefined)
@@ -732,18 +888,31 @@ export class PostHogFeatureFlags {
     /**
      * See if feature flag is enabled for user.
      *
+     * By default, this method may return cached values from localStorage if the `/flags` endpoint
+     * hasn't responded yet. This reduces flicker but means you might briefly see stale values
+     * (e.g., a flag that was disabled on the server).
+     *
      * ### Usage:
      *
      *     if(posthog.isFeatureEnabled('beta-feature')) { // do something }
      *
-     * @param key Key of the feature flag.
-     * @param [options] If {send_event: false}, we won't send an $feature_flag_call event to PostHog.
-     * @returns A boolean value indicating whether or not the specified feature flag is enabled. If flag information has not yet been loaded,
-     *          or if the specified feature flag is disabled or does not exist, returns undefined.
+     *     // Only use fresh values from the server
+     *     if(posthog.isFeatureEnabled('beta-feature', { fresh: true })) { // do something }
+     *
+     * @param {String} key Key of the feature flag.
+     * @param {Object} [options] Optional settings.
+     * @param {boolean} [options.send_event=true] If false, won't send a $feature_flag_called event to PostHog.
+     * @param {boolean} [options.fresh=false] If true, only returns values loaded from the server, not cached localStorage values.
+     *                  Use this when you need to ensure the flag value reflects the current server state.
+     *                  Returns undefined until the /flags endpoint responds.
+     * @returns {boolean | undefined} Whether the flag is enabled, or undefined if not found or not yet loaded.
      */
-    isFeatureEnabled(key: string, options: { send_event?: boolean } = {}): boolean | undefined {
+    isFeatureEnabled(key: string, options: FeatureFlagOptions = {}): boolean | undefined {
+        if (options.fresh && !this._flagsLoadedFromRemote) {
+            return undefined
+        }
         if (!this._hasLoadedFlags && !(this.getFlags() && this.getFlags().length > 0)) {
-            logger.warn('isFeatureEnabled for key "' + key + '" failed. Feature flags didn\'t load in time.')
+            logger.warn('isFeatureEnabled for key "' + key + FLAG_TIMEOUT_MSG)
             return undefined
         }
         const flagValue = this.getFeatureFlag(key, options)
@@ -759,7 +928,7 @@ export class PostHogFeatureFlags {
     }
 
     receivedFeatureFlags(response: Partial<FlagsResponse>, errorsLoading?: boolean): void {
-        if (!this._instance.persistence) {
+        if (!this._persistence) {
             return
         }
         this._hasLoadedFlags = true
@@ -767,7 +936,13 @@ export class PostHogFeatureFlags {
         const currentFlags = this.getFlagVariants()
         const currentFlagPayloads = this.getFlagPayloads()
         const currentFlagDetails = this.getFlagsWithDetails()
-        parseFlagsResponse(response, this._instance.persistence, currentFlags, currentFlagPayloads, currentFlagDetails)
+        parseFlagsResponse(response, this._persistence, currentFlags, currentFlagPayloads, currentFlagDetails)
+
+        // Reset stale refresh flag when we successfully receive fresh flags
+        if (!errorsLoading) {
+            this._staleCacheRefreshTriggered = false
+        }
+
         this._fireFeatureFlagsCallbacks(errorsLoading)
     }
 
@@ -791,6 +966,8 @@ export class PostHogFeatureFlags {
      *     - posthog.featureFlags.overrideFeatureFlags(false) // clear all overrides
      *     - posthog.featureFlags.overrideFeatureFlags(['beta-feature']) // enable flags
      *     - posthog.featureFlags.overrideFeatureFlags({'beta-feature': 'variant'}) // set variants
+     *     - posthog.featureFlags.overrideFeatureFlags({ flags: ['beta-feature'] }) // enable flags
+     *     - posthog.featureFlags.overrideFeatureFlags({ flags: {'beta-feature': 'variant'} }) // set variants
      *     - posthog.featureFlags.overrideFeatureFlags({ // set both flags and payloads
      *         flags: {'beta-feature': 'variant'},
      *         payloads: { 'beta-feature': { someData: true } }
@@ -800,17 +977,26 @@ export class PostHogFeatureFlags {
      *       })
      */
     overrideFeatureFlags(overrideOptions: OverrideFeatureFlagsOptions): void {
-        if (!this._instance.__loaded || !this._instance.persistence) {
+        if (!this._instance.__loaded || !this._persistence) {
             return logger.uninitializedWarning('posthog.featureFlags.overrideFeatureFlags')
         }
 
         // Clear all overrides if false, lets you do something like posthog.featureFlags.overrideFeatureFlags(false)
         if (overrideOptions === false) {
-            this._instance.persistence.unregister(PERSISTENCE_OVERRIDE_FEATURE_FLAGS)
-            this._instance.persistence.unregister(PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS)
+            this._persistence.unregister(PERSISTENCE_OVERRIDE_FEATURE_FLAGS)
+            this._persistence.unregister(PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS)
             this._fireFeatureFlagsCallbacks()
 
             return forceDebugLogger.info('All overrides cleared')
+        }
+
+        // Array syntax: ['flag-a', 'flag-b'] -> { 'flag-a': true, 'flag-b': true }
+        if (isArray(overrideOptions)) {
+            const flagsObj = arrayToFlagsRecord(overrideOptions)
+            this._persistence.register({ [PERSISTENCE_OVERRIDE_FEATURE_FLAGS]: flagsObj })
+            this._fireFeatureFlagsCallbacks()
+
+            return forceDebugLogger.info('Flag overrides set', { flags: overrideOptions })
         }
 
         if (
@@ -824,17 +1010,14 @@ export class PostHogFeatureFlags {
             // Handle flags if provided, lets you do something like posthog.featureFlags.overrideFeatureFlags({flags: ['beta-feature']})
             if ('flags' in options) {
                 if (options.flags === false) {
-                    this._instance.persistence.unregister(PERSISTENCE_OVERRIDE_FEATURE_FLAGS)
+                    this._persistence.unregister(PERSISTENCE_OVERRIDE_FEATURE_FLAGS)
                     forceDebugLogger.info('Flag overrides cleared')
                 } else if (options.flags) {
                     if (isArray(options.flags)) {
-                        const flagsObj: Record<string, string | boolean> = {}
-                        for (let i = 0; i < options.flags.length; i++) {
-                            flagsObj[options.flags[i]] = true
-                        }
-                        this._instance.persistence.register({ [PERSISTENCE_OVERRIDE_FEATURE_FLAGS]: flagsObj })
+                        const flagsObj = arrayToFlagsRecord(options.flags)
+                        this._persistence.register({ [PERSISTENCE_OVERRIDE_FEATURE_FLAGS]: flagsObj })
                     } else {
-                        this._instance.persistence.register({ [PERSISTENCE_OVERRIDE_FEATURE_FLAGS]: options.flags })
+                        this._persistence.register({ [PERSISTENCE_OVERRIDE_FEATURE_FLAGS]: options.flags })
                     }
 
                     forceDebugLogger.info('Flag overrides set', { flags: options.flags })
@@ -844,10 +1027,10 @@ export class PostHogFeatureFlags {
             // Handle payloads independently, lets you do something like posthog.featureFlags.overrideFeatureFlags({payloads: { 'beta-feature': { someData: true } }})
             if ('payloads' in options) {
                 if (options.payloads === false) {
-                    this._instance.persistence.unregister(PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS)
+                    this._persistence.unregister(PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS)
                     forceDebugLogger.info('Payload overrides cleared')
                 } else if (options.payloads) {
-                    this._instance.persistence.register({
+                    this._persistence.register({
                         [PERSISTENCE_OVERRIDE_FEATURE_FLAG_PAYLOADS]: options.payloads,
                     })
                     forceDebugLogger.info('Payload overrides set', { payloads: options.payloads })
@@ -858,7 +1041,17 @@ export class PostHogFeatureFlags {
             return
         }
 
-        this._fireFeatureFlagsCallbacks()
+        // Fallback: treat as Record<string, string | boolean>, e.g. {'beta-feature': 'variant'}
+        if (overrideOptions && typeof overrideOptions === 'object') {
+            this._persistence.register({
+                [PERSISTENCE_OVERRIDE_FEATURE_FLAGS]: overrideOptions as Record<string, string | boolean>,
+            })
+            this._fireFeatureFlagsCallbacks()
+
+            return forceDebugLogger.info('Flag overrides set', { flags: overrideOptions })
+        }
+
+        logger.warn('Invalid overrideOptions provided to overrideFeatureFlags', { overrideOptions })
     }
 
     /*
@@ -884,8 +1077,7 @@ export class PostHogFeatureFlags {
     }
 
     updateEarlyAccessFeatureEnrollment(key: string, isEnrolled: boolean, stage?: string): void {
-        const existing_early_access_features: EarlyAccessFeature[] =
-            this._instance.get_property(PERSISTENCE_EARLY_ACCESS_FEATURES) || []
+        const existing_early_access_features: EarlyAccessFeature[] = this._prop(PERSISTENCE_EARLY_ACCESS_FEATURES) || []
         const feature = existing_early_access_features.find((f) => f.flagKey === key)
 
         const enrollmentPersonProp = {
@@ -910,7 +1102,7 @@ export class PostHogFeatureFlags {
         this.setPersonPropertiesForFlags(enrollmentPersonProp, false)
 
         const newFlags = { ...this.getFlagVariants(), [key]: isEnrolled }
-        this._instance.persistence?.register({
+        this._persistence?.register({
             [PERSISTENCE_ACTIVE_FEATURE_FLAGS]: Object.keys(filterActiveFeatureFlags(newFlags)),
             [ENABLED_FEATURE_FLAGS]: newFlags,
         })
@@ -922,7 +1114,7 @@ export class PostHogFeatureFlags {
         force_reload = false,
         stages?: EarlyAccessFeatureStage[]
     ): void {
-        const existing_early_access_features = this._instance.get_property(PERSISTENCE_EARLY_ACCESS_FEATURES)
+        const existing_early_access_features = this._prop(PERSISTENCE_EARLY_ACCESS_FEATURES)
 
         const stageParams = stages ? `&${stages.map((s) => `stage=${s}`).join('&')}` : ''
 
@@ -930,7 +1122,7 @@ export class PostHogFeatureFlags {
             this._instance._send_request({
                 url: this._instance.requestRouter.endpointFor(
                     'api',
-                    `/api/early_access_features/?token=${this._instance.config.token}${stageParams}`
+                    `/api/early_access_features/?token=${this._config.token}${stageParams}`
                 ),
                 method: 'GET',
                 callback: (response) => {
@@ -940,8 +1132,8 @@ export class PostHogFeatureFlags {
                     const earlyAccessFeatures = (response.json as EarlyAccessFeatureResponse).earlyAccessFeatures
                     // Unregister first to ensure complete replacement, not merge
                     // This prevents accumulation of stale features in persistence
-                    this._instance.persistence?.unregister(PERSISTENCE_EARLY_ACCESS_FEATURES)
-                    this._instance.persistence?.register({ [PERSISTENCE_EARLY_ACCESS_FEATURES]: earlyAccessFeatures })
+                    this._persistence?.unregister(PERSISTENCE_EARLY_ACCESS_FEATURES)
+                    this._persistence?.register({ [PERSISTENCE_EARLY_ACCESS_FEATURES]: earlyAccessFeatures })
                     return callback(earlyAccessFeatures)
                 },
             })
@@ -981,7 +1173,7 @@ export class PostHogFeatureFlags {
      */
     setPersonPropertiesForFlags(properties: Properties, reloadFeatureFlags = true): void {
         // Get persisted person properties
-        const existingProperties = this._instance.get_property(STORED_PERSON_PROPERTIES_KEY) || {}
+        const existingProperties = this._prop(STORED_PERSON_PROPERTIES_KEY) || {}
 
         this._instance.register({
             [STORED_PERSON_PROPERTIES_KEY]: {
@@ -1009,7 +1201,7 @@ export class PostHogFeatureFlags {
      */
     setGroupPropertiesForFlags(properties: { [type: string]: Properties }, reloadFeatureFlags = true): void {
         // Get persisted group properties
-        const existingProperties = this._instance.get_property(STORED_GROUP_PROPERTIES_KEY) || {}
+        const existingProperties = this._prop(STORED_GROUP_PROPERTIES_KEY) || {}
 
         if (Object.keys(existingProperties).length !== 0) {
             Object.keys(existingProperties).forEach((groupType) => {
@@ -1035,7 +1227,7 @@ export class PostHogFeatureFlags {
 
     resetGroupPropertiesForFlags(group_type?: string): void {
         if (group_type) {
-            const existingProperties = this._instance.get_property(STORED_GROUP_PROPERTIES_KEY) || {}
+            const existingProperties = this._prop(STORED_GROUP_PROPERTIES_KEY) || {}
             this._instance.register({
                 [STORED_GROUP_PROPERTIES_KEY]: { ...existingProperties, [group_type]: {} },
             })
@@ -1049,7 +1241,6 @@ export class PostHogFeatureFlags {
         this._requestInFlight = false
         this._reloadingDisabled = false
         this._additionalReloadRequested = false
-        this._flagsCalled = false
         this._flagsLoadedFromRemote = false
         this.$anon_distinct_id = undefined
         this._clearDebouncer()

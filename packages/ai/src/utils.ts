@@ -1,5 +1,4 @@
 import { EventMessage, PostHog } from 'posthog-node'
-import { Buffer } from 'buffer'
 import OpenAIOrignal from 'openai'
 import AnthropicOriginal from '@anthropic-ai/sdk'
 import type { ChatCompletionTool } from 'openai/resources/chat/completions'
@@ -18,6 +17,22 @@ type ResponseCreateParams = OpenAIOrignal.Responses.ResponseCreateParams
 type EmbeddingCreateParams = OpenAIOrignal.EmbeddingCreateParams
 type TranscriptionCreateParams = OpenAIOrignal.Audio.Transcriptions.TranscriptionCreateParams
 type AnthropicTool = AnthropicOriginal.Tool
+
+const TOKEN_PROPERTY_KEYS = new Set([
+  '$ai_input_tokens',
+  '$ai_output_tokens',
+  '$ai_cache_read_input_tokens',
+  '$ai_cache_creation_input_tokens',
+  '$ai_total_tokens',
+  '$ai_reasoning_tokens',
+])
+
+export function getTokensSource(posthogProperties?: Record<string, unknown>): string {
+  if (posthogProperties && Object.keys(posthogProperties).some((key) => TOKEN_PROPERTY_KEYS.has(key))) {
+    return 'passthrough'
+  }
+  return 'sdk'
+}
 
 // limit large outputs by truncating to 200kb (approx 200k bytes)
 export const MAX_OUTPUT_SIZE = 200000
@@ -279,9 +294,17 @@ export const formatResponseGemini = (response: any): FormattedMessage[] => {
             const mimeType = part.inlineData.mimeType || 'audio/pcm'
             let data = part.inlineData.data
 
-            // Handle binary data (Buffer/Uint8Array -> base64)
-            if (data instanceof Uint8Array || Buffer.isBuffer(data)) {
-              data = Buffer.from(data).toString('base64')
+            // Handle binary data (Uint8Array/Buffer -> base64)
+            if (data instanceof Uint8Array) {
+              if (typeof Buffer !== 'undefined') {
+                data = Buffer.from(data).toString('base64')
+              } else {
+                let binary = ''
+                for (let i = 0; i < data.length; i++) {
+                  binary += String.fromCharCode(data[i])
+                }
+                data = btoa(binary)
+              }
             }
 
             // Sanitize base64 data for images and other large inline data
@@ -569,7 +592,8 @@ function sanitizeValues(obj: any): any {
   }
   const jsonSafe = JSON.parse(JSON.stringify(obj))
   if (typeof jsonSafe === 'string') {
-    return Buffer.from(jsonSafe, STRING_FORMAT).toString(STRING_FORMAT)
+    // Sanitize lone surrogates by round-tripping through UTF-8
+    return new TextDecoder().decode(new TextEncoder().encode(jsonSafe))
   } else if (Array.isArray(jsonSafe)) {
     return jsonSafe.map(sanitizeValues)
   } else if (jsonSafe && typeof jsonSafe === 'object') {
@@ -719,6 +743,7 @@ export const sendEventToPosthog = async ({
     $ai_trace_id: traceId,
     $ai_base_url: baseURL,
     ...params.posthogProperties,
+    $ai_tokens_source: getTokensSource(params.posthogProperties),
     ...(distinctId ? {} : { $process_person_profile: false }),
     ...(tools ? { $ai_tools: tools } : {}),
     ...errorData,

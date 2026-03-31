@@ -4,6 +4,7 @@ import {
   matchProperty,
   InconclusiveMatchError,
   relativeDateParseForFeatureFlagMatching,
+  parseSemver,
 } from '@/extensions/feature-flags/feature-flags'
 import { anyFlagsCall, anyLocalEvalCall, apiImplementation, waitForPromises } from './utils'
 
@@ -133,6 +134,307 @@ describe('local evaluation', () => {
       await posthog.getFeatureFlag('person-flag', 'some-distinct-id', { personProperties: { region: 'Canada' } })
     ).toEqual(false)
     expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+  })
+
+  it('falls back to server when bucketing_identifier is device_id and $device_id is missing', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Device Flag',
+          key: 'device-id-flag',
+          bucketing_identifier: 'device_id',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(
+      apiImplementation({ localFlags: flags, decideFlags: { 'device-id-flag': 'flags-fallback-value' } })
+    )
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    expect(await posthog.getFeatureFlag('device-id-flag', 'some-distinct-id')).toEqual('flags-fallback-value')
+    expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+    expect(mockedFetch).toHaveBeenCalledWith(...anyFlagsCall)
+  })
+
+  it('does not fallback to server for missing $device_id when onlyEvaluateLocally is true', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Device Flag',
+          key: 'device-id-flag',
+          bucketing_identifier: 'device_id',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(
+      apiImplementation({ localFlags: flags, decideFlags: { 'device-id-flag': 'flags-fallback-value' } })
+    )
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    expect(await posthog.getFeatureFlag('device-id-flag', 'some-distinct-id', { onlyEvaluateLocally: true })).toEqual(
+      undefined
+    )
+    expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+    expect(mockedFetch).not.toHaveBeenCalledWith(...anyFlagsCall)
+  })
+
+  it('getFeatureFlagResult falls back to server when bucketing_identifier is device_id and $device_id is missing', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Device Flag',
+          key: 'device-id-flag',
+          bucketing_identifier: 'device_id',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(
+      apiImplementation({
+        localFlags: flags,
+        decideFlags: { 'device-id-flag': 'flags-fallback-value' },
+        flagsPayloads: { 'device-id-flag': 'fallback-payload' },
+      })
+    )
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    const result = await posthog.getFeatureFlagResult('device-id-flag', 'some-distinct-id')
+    expect(result).toMatchObject({
+      key: 'device-id-flag',
+      enabled: true,
+      variant: 'flags-fallback-value',
+      payload: 'fallback-payload',
+    })
+    expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+    expect(mockedFetch).toHaveBeenCalledWith(...anyFlagsCall)
+  })
+
+  it('getFeatureFlagResult does not fallback to server for missing $device_id when onlyEvaluateLocally is true', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Device Flag',
+          key: 'device-id-flag',
+          bucketing_identifier: 'device_id',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(
+      apiImplementation({
+        localFlags: flags,
+        decideFlags: { 'device-id-flag': 'flags-fallback-value' },
+        flagsPayloads: { 'device-id-flag': 'fallback-payload' },
+      })
+    )
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    const result = await posthog.getFeatureFlagResult('device-id-flag', 'some-distinct-id', {
+      onlyEvaluateLocally: true,
+    })
+    expect(result).toBeUndefined()
+    expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+    expect(mockedFetch).not.toHaveBeenCalledWith(...anyFlagsCall)
+  })
+
+  it('getFeatureFlagPayload falls back to server when bucketing_identifier is device_id and $device_id is missing', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Device Flag',
+          key: 'device-id-flag',
+          bucketing_identifier: 'device_id',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+            payloads: { true: 'local-payload' },
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(
+      apiImplementation({
+        localFlags: flags,
+        decideFlags: { 'device-id-flag': 'flags-fallback-value' },
+        flagsPayloads: { 'device-id-flag': 'fallback-payload' },
+      })
+    )
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    const payload = await posthog.getFeatureFlagPayload('device-id-flag', 'some-distinct-id')
+    expect(payload).toEqual('fallback-payload')
+    expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+    expect(mockedFetch).toHaveBeenCalledWith(...anyFlagsCall)
+  })
+
+  it('getFeatureFlagPayload does not fallback to server for missing $device_id when onlyEvaluateLocally is true', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Device Flag',
+          key: 'device-id-flag',
+          bucketing_identifier: 'device_id',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+            payloads: { true: 'local-payload' },
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(
+      apiImplementation({
+        localFlags: flags,
+        decideFlags: { 'device-id-flag': 'flags-fallback-value' },
+        flagsPayloads: { 'device-id-flag': 'fallback-payload' },
+      })
+    )
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    const payload = await posthog.getFeatureFlagPayload('device-id-flag', 'some-distinct-id', undefined, {
+      onlyEvaluateLocally: true,
+    })
+    expect(payload).toBeUndefined()
+    expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+    expect(mockedFetch).not.toHaveBeenCalledWith(...anyFlagsCall)
+  })
+
+  it('uses $device_id for bucketing when bucketing_identifier is device_id', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Device Bucketing Flag',
+          key: 'complex-flag',
+          bucketing_identifier: 'device_id',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 30 }],
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(apiImplementation({ localFlags: flags }))
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    const sharedDeviceId = 'some-distinct-id_within_rollout?'
+
+    expect(
+      await posthog.getFeatureFlag('complex-flag', 'some-distinct-id_within_rollout?', {
+        personProperties: { $device_id: sharedDeviceId },
+      })
+    ).toEqual(true)
+
+    expect(
+      await posthog.getFeatureFlag('complex-flag', 'some-distinct-id_outside_rollout?', {
+        personProperties: { $device_id: sharedDeviceId },
+      })
+    ).toEqual(true)
+
+    expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+    expect(mockedFetch).not.toHaveBeenCalledWith(...anyFlagsCall)
+  })
+
+  it('treats null and empty bucketing_identifier as distinct_id', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Null Bucketing Identifier',
+          key: 'null-bucketing-identifier-flag',
+          bucketing_identifier: null,
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+          },
+        },
+        {
+          id: 2,
+          name: 'Empty Bucketing Identifier',
+          key: 'empty-bucketing-identifier-flag',
+          bucketing_identifier: '',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(apiImplementation({ localFlags: flags }))
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    expect(await posthog.getFeatureFlag('null-bucketing-identifier-flag', 'some-distinct-id')).toEqual(true)
+    expect(await posthog.getFeatureFlag('empty-bucketing-identifier-flag', 'some-distinct-id')).toEqual(true)
+    expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
+    expect(mockedFetch).not.toHaveBeenCalledWith(...anyFlagsCall)
   })
 
   it('evaluates group properties', async () => {
@@ -347,7 +649,7 @@ describe('local evaluation', () => {
       })
     ).toEqual('flags-fallback-value')
     expect(mockedFetch).toHaveBeenCalledWith(
-      'http://example.com/flags/?v=2&config=true',
+      'http://example.com/flags/?v=2',
       expect.objectContaining({
         body: JSON.stringify({
           token: 'TEST_API_KEY',
@@ -371,7 +673,7 @@ describe('local evaluation', () => {
       await posthog.getFeatureFlag('complex-flag', 'some-distinct-id', { personProperties: { doesnt_matter: '1' } })
     ).toEqual('flags-fallback-value')
     expect(mockedFetch).toHaveBeenCalledWith(
-      'http://example.com/flags/?v=2&config=true',
+      'http://example.com/flags/?v=2',
       expect.objectContaining({
         body: JSON.stringify({
           token: 'TEST_API_KEY',
@@ -2689,6 +2991,417 @@ describe('match properties', () => {
     expect(() => matchProperty(property_a, { key: 'random' })).toThrow(
       new InconclusiveMatchError('Unknown operator: is_unknown')
     )
+  })
+})
+
+describe('semver parsing', () => {
+  it('parses basic semver strings', () => {
+    expect(parseSemver('1.2.3')).toEqual([1, 2, 3])
+    expect(parseSemver('0.0.0')).toEqual([0, 0, 0])
+    expect(parseSemver('10.20.30')).toEqual([10, 20, 30])
+  })
+
+  it('strips v prefix', () => {
+    expect(parseSemver('v1.2.3')).toEqual([1, 2, 3])
+    expect(parseSemver('V1.2.3')).toEqual([1, 2, 3])
+  })
+
+  it('strips leading and trailing whitespace', () => {
+    expect(parseSemver('  1.2.3  ')).toEqual([1, 2, 3])
+    expect(parseSemver('\t1.2.3\n')).toEqual([1, 2, 3])
+  })
+
+  it('strips pre-release and build metadata', () => {
+    expect(parseSemver('1.2.3-alpha')).toEqual([1, 2, 3])
+    expect(parseSemver('1.2.3-alpha.1')).toEqual([1, 2, 3])
+    expect(parseSemver('1.2.3+build')).toEqual([1, 2, 3])
+    expect(parseSemver('1.2.3-alpha+build')).toEqual([1, 2, 3])
+    expect(parseSemver('1.2.3-rc.1+build.123')).toEqual([1, 2, 3])
+  })
+
+  it('defaults missing components to 0', () => {
+    expect(parseSemver('1.2')).toEqual([1, 2, 0])
+    expect(parseSemver('1')).toEqual([1, 0, 0])
+  })
+
+  it('ignores extra components beyond third', () => {
+    expect(parseSemver('1.2.3.4')).toEqual([1, 2, 3])
+    expect(parseSemver('1.2.3.4.5.6')).toEqual([1, 2, 3])
+  })
+
+  it('handles leading zeros', () => {
+    expect(parseSemver('01.02.03')).toEqual([1, 2, 3])
+  })
+
+  it('throws on invalid input', () => {
+    expect(() => parseSemver('')).toThrow(InconclusiveMatchError)
+    expect(() => parseSemver('.1.2')).toThrow(InconclusiveMatchError)
+    expect(() => parseSemver('abc')).toThrow(InconclusiveMatchError)
+    expect(() => parseSemver('a.b.c')).toThrow(InconclusiveMatchError)
+    expect(() => parseSemver('1.2.three')).toThrow(InconclusiveMatchError)
+  })
+
+  it('throws on malformed version with trailing non-numeric characters', () => {
+    // parseInt('3alpha', 10) returns 3, but we should reject this
+    expect(() => parseSemver('1.2.3alpha')).toThrow(InconclusiveMatchError)
+    expect(() => parseSemver('1.2alpha.3')).toThrow(InconclusiveMatchError)
+    expect(() => parseSemver('1alpha.2.3')).toThrow(InconclusiveMatchError)
+  })
+})
+
+describe('semver operators', () => {
+  describe('semver_eq', () => {
+    it('matches equal versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: '1.2.3' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '0.0.0', operator: 'semver_eq' }, { version: '0.0.0' })).toBe(true)
+    })
+
+    it('matches with v prefix', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: 'v1.2.3' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: 'v1.2.3', operator: 'semver_eq' }, { version: '1.2.3' })).toBe(true)
+    })
+
+    it('matches with pre-release stripped', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: '1.2.3-alpha' })).toBe(
+        true
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3-alpha', operator: 'semver_eq' }, { version: '1.2.3' })).toBe(
+        true
+      )
+    })
+
+    it('matches partial versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2', operator: 'semver_eq' }, { version: '1.2.0' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1', operator: 'semver_eq' }, { version: '1.0.0' })).toBe(true)
+    })
+
+    it('does not match different versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: '1.2.4' })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: '1.3.3' })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: '2.2.3' })).toBe(false)
+    })
+  })
+
+  describe('semver_neq', () => {
+    it('matches different versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_neq' }, { version: '1.2.4' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_neq' }, { version: '2.0.0' })).toBe(true)
+    })
+
+    it('does not match equal versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_neq' }, { version: '1.2.3' })).toBe(
+        false
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_neq' }, { version: 'v1.2.3' })).toBe(
+        false
+      )
+    })
+  })
+
+  describe('semver_gt', () => {
+    it('matches greater versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gt' }, { version: '1.2.4' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gt' }, { version: '1.3.0' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gt' }, { version: '2.0.0' })).toBe(true)
+    })
+
+    it('does not match equal or lesser versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gt' }, { version: '1.2.3' })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gt' }, { version: '1.2.2' })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gt' }, { version: '0.9.9' })).toBe(false)
+    })
+  })
+
+  describe('semver_gte', () => {
+    it('matches greater or equal versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gte' }, { version: '1.2.3' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gte' }, { version: '1.2.4' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gte' }, { version: '2.0.0' })).toBe(true)
+    })
+
+    it('does not match lesser versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gte' }, { version: '1.2.2' })).toBe(
+        false
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gte' }, { version: '0.9.9' })).toBe(
+        false
+      )
+    })
+  })
+
+  describe('semver_lt', () => {
+    it('matches lesser versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lt' }, { version: '1.2.2' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lt' }, { version: '1.1.9' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lt' }, { version: '0.9.9' })).toBe(true)
+    })
+
+    it('does not match equal or greater versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lt' }, { version: '1.2.3' })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lt' }, { version: '1.2.4' })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lt' }, { version: '2.0.0' })).toBe(false)
+    })
+  })
+
+  describe('semver_lte', () => {
+    it('matches lesser or equal versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lte' }, { version: '1.2.3' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lte' }, { version: '1.2.2' })).toBe(true)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lte' }, { version: '0.9.9' })).toBe(true)
+    })
+
+    it('does not match greater versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lte' }, { version: '1.2.4' })).toBe(
+        false
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_lte' }, { version: '2.0.0' })).toBe(
+        false
+      )
+    })
+  })
+
+  describe('semver_tilde', () => {
+    // ~1.2.3 means >=1.2.3 and <1.3.0
+    it('matches versions in tilde range', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_tilde' }, { version: '1.2.3' })).toBe(
+        true
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_tilde' }, { version: '1.2.4' })).toBe(
+        true
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_tilde' }, { version: '1.2.99' })).toBe(
+        true
+      )
+    })
+
+    it('does not match versions outside tilde range', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_tilde' }, { version: '1.2.2' })).toBe(
+        false
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_tilde' }, { version: '1.3.0' })).toBe(
+        false
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_tilde' }, { version: '2.0.0' })).toBe(
+        false
+      )
+    })
+
+    it('handles edge cases at boundaries', () => {
+      // Lower bound is inclusive
+      expect(matchProperty({ key: 'version', value: '1.0.0', operator: 'semver_tilde' }, { version: '1.0.0' })).toBe(
+        true
+      )
+      // Upper bound is exclusive
+      expect(matchProperty({ key: 'version', value: '1.0.0', operator: 'semver_tilde' }, { version: '1.1.0' })).toBe(
+        false
+      )
+    })
+  })
+
+  describe('semver_caret', () => {
+    // ^1.2.3 means >=1.2.3 <2.0.0 (major > 0)
+    describe('when major > 0', () => {
+      it('matches versions in caret range', () => {
+        expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_caret' }, { version: '1.2.3' })).toBe(
+          true
+        )
+        expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_caret' }, { version: '1.2.4' })).toBe(
+          true
+        )
+        expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_caret' }, { version: '1.9.9' })).toBe(
+          true
+        )
+        expect(
+          matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_caret' }, { version: '1.99.99' })
+        ).toBe(true)
+      })
+
+      it('does not match versions outside caret range', () => {
+        expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_caret' }, { version: '1.2.2' })).toBe(
+          false
+        )
+        expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_caret' }, { version: '2.0.0' })).toBe(
+          false
+        )
+        expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_caret' }, { version: '0.9.9' })).toBe(
+          false
+        )
+      })
+    })
+
+    // ^0.2.3 means >=0.2.3 <0.3.0 (major = 0, minor > 0)
+    describe('when major = 0 and minor > 0', () => {
+      it('matches versions in caret range', () => {
+        expect(matchProperty({ key: 'version', value: '0.2.3', operator: 'semver_caret' }, { version: '0.2.3' })).toBe(
+          true
+        )
+        expect(matchProperty({ key: 'version', value: '0.2.3', operator: 'semver_caret' }, { version: '0.2.4' })).toBe(
+          true
+        )
+        expect(matchProperty({ key: 'version', value: '0.2.3', operator: 'semver_caret' }, { version: '0.2.99' })).toBe(
+          true
+        )
+      })
+
+      it('does not match versions outside caret range', () => {
+        expect(matchProperty({ key: 'version', value: '0.2.3', operator: 'semver_caret' }, { version: '0.2.2' })).toBe(
+          false
+        )
+        expect(matchProperty({ key: 'version', value: '0.2.3', operator: 'semver_caret' }, { version: '0.3.0' })).toBe(
+          false
+        )
+        expect(matchProperty({ key: 'version', value: '0.2.3', operator: 'semver_caret' }, { version: '1.0.0' })).toBe(
+          false
+        )
+      })
+    })
+
+    // ^0.0.3 means >=0.0.3 <0.0.4 (major = 0, minor = 0)
+    describe('when major = 0 and minor = 0', () => {
+      it('matches exact patch version only', () => {
+        expect(matchProperty({ key: 'version', value: '0.0.3', operator: 'semver_caret' }, { version: '0.0.3' })).toBe(
+          true
+        )
+      })
+
+      it('does not match different patch versions', () => {
+        expect(matchProperty({ key: 'version', value: '0.0.3', operator: 'semver_caret' }, { version: '0.0.2' })).toBe(
+          false
+        )
+        expect(matchProperty({ key: 'version', value: '0.0.3', operator: 'semver_caret' }, { version: '0.0.4' })).toBe(
+          false
+        )
+        expect(matchProperty({ key: 'version', value: '0.0.3', operator: 'semver_caret' }, { version: '0.1.0' })).toBe(
+          false
+        )
+      })
+    })
+  })
+
+  describe('semver_wildcard', () => {
+    // 1.* means >=1.0.0 <2.0.0
+    describe('major wildcard (X.*)', () => {
+      it('matches versions in range', () => {
+        expect(matchProperty({ key: 'version', value: '1.*', operator: 'semver_wildcard' }, { version: '1.0.0' })).toBe(
+          true
+        )
+        expect(matchProperty({ key: 'version', value: '1.*', operator: 'semver_wildcard' }, { version: '1.5.5' })).toBe(
+          true
+        )
+        expect(
+          matchProperty({ key: 'version', value: '1.*', operator: 'semver_wildcard' }, { version: '1.99.99' })
+        ).toBe(true)
+      })
+
+      it('does not match versions outside range', () => {
+        expect(matchProperty({ key: 'version', value: '1.*', operator: 'semver_wildcard' }, { version: '0.9.9' })).toBe(
+          false
+        )
+        expect(matchProperty({ key: 'version', value: '1.*', operator: 'semver_wildcard' }, { version: '2.0.0' })).toBe(
+          false
+        )
+      })
+    })
+
+    // 1.2.* means >=1.2.0 <1.3.0
+    describe('minor wildcard (X.Y.*)', () => {
+      it('matches versions in range', () => {
+        expect(
+          matchProperty({ key: 'version', value: '1.2.*', operator: 'semver_wildcard' }, { version: '1.2.0' })
+        ).toBe(true)
+        expect(
+          matchProperty({ key: 'version', value: '1.2.*', operator: 'semver_wildcard' }, { version: '1.2.5' })
+        ).toBe(true)
+        expect(
+          matchProperty({ key: 'version', value: '1.2.*', operator: 'semver_wildcard' }, { version: '1.2.99' })
+        ).toBe(true)
+      })
+
+      it('does not match versions outside range', () => {
+        expect(
+          matchProperty({ key: 'version', value: '1.2.*', operator: 'semver_wildcard' }, { version: '1.1.9' })
+        ).toBe(false)
+        expect(
+          matchProperty({ key: 'version', value: '1.2.*', operator: 'semver_wildcard' }, { version: '1.3.0' })
+        ).toBe(false)
+      })
+    })
+  })
+
+  describe('error handling', () => {
+    it('throws InconclusiveMatchError for missing property key', () => {
+      expect(() =>
+        matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { other_key: '1.2.3' })
+      ).toThrow(InconclusiveMatchError)
+    })
+
+    it('returns false for null property value', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: null })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_gt' }, { version: null })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_tilde' }, { version: null })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_caret' }, { version: null })).toBe(false)
+      expect(matchProperty({ key: 'version', value: '1.*', operator: 'semver_wildcard' }, { version: null })).toBe(
+        false
+      )
+    })
+
+    it('returns false for undefined property value', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: undefined })).toBe(
+        false
+      )
+    })
+
+    it('throws InconclusiveMatchError for invalid override value', () => {
+      expect(() =>
+        matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: 'not-a-version' })
+      ).toThrow(InconclusiveMatchError)
+      expect(() => matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: '' })).toThrow(
+        InconclusiveMatchError
+      )
+    })
+
+    it('throws InconclusiveMatchError for invalid flag value', () => {
+      expect(() =>
+        matchProperty({ key: 'version', value: 'not-a-version', operator: 'semver_eq' }, { version: '1.2.3' })
+      ).toThrow(InconclusiveMatchError)
+    })
+  })
+
+  describe('edge cases', () => {
+    it('handles whitespace in values', () => {
+      expect(matchProperty({ key: 'version', value: '  1.2.3  ', operator: 'semver_eq' }, { version: '1.2.3' })).toBe(
+        true
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: '  1.2.3  ' })).toBe(
+        true
+      )
+    })
+
+    it('handles leading zeros', () => {
+      expect(matchProperty({ key: 'version', value: '01.02.03', operator: 'semver_eq' }, { version: '1.2.3' })).toBe(
+        true
+      )
+    })
+
+    it('handles 4-part versions', () => {
+      expect(matchProperty({ key: 'version', value: '1.2.3.4', operator: 'semver_eq' }, { version: '1.2.3' })).toBe(
+        true
+      )
+      expect(matchProperty({ key: 'version', value: '1.2.3', operator: 'semver_eq' }, { version: '1.2.3.4' })).toBe(
+        true
+      )
+    })
+
+    it('handles numeric property values', () => {
+      // Numbers get converted to strings
+      expect(matchProperty({ key: 'version', value: '1.0.0', operator: 'semver_eq' }, { version: 1 })).toBe(true)
+    })
+
+    it('pre-release suffixes are stripped on both sides', () => {
+      expect(
+        matchProperty({ key: 'version', value: '1.2.3-beta.1', operator: 'semver_eq' }, { version: '1.2.3-alpha.2' })
+      ).toBe(true)
+    })
   })
 })
 
@@ -5899,5 +6612,98 @@ describe('strictLocalEvaluation option', () => {
     // Should have made a /flags call since we explicitly set onlyEvaluateLocally: false
     expect(mockedFetch).toHaveBeenCalledWith(...anyFlagsCall)
     expect(result).toBe(true)
+  })
+
+  it('includes local evaluation timestamps functionality', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 42,
+          name: 'Simple Flag',
+          key: 'simple-flag',
+          active: true,
+          filters: {
+            groups: [
+              {
+                properties: [],
+                rollout_percentage: 100,
+              },
+            ],
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(apiImplementation({ localFlags: flags }))
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      ...posthogImmediateResolveOptions,
+    })
+
+    // Wait for flags to load
+    await jest.runOnlyPendingTimersAsync()
+
+    // Verify flag definitions loaded timestamp is available
+    const flagDefinitionsLoadedAt = posthog.featureFlagsPoller?.getFlagDefinitionsLoadedAt()
+    expect(flagDefinitionsLoadedAt).toBeDefined()
+    expect(typeof flagDefinitionsLoadedAt).toBe('number')
+    expect(flagDefinitionsLoadedAt).toBeGreaterThan(0)
+
+    // Test that locally evaluated flags include evaluation timestamps
+    const capturedEvents: any[] = []
+    posthog.capture = jest.fn().mockImplementation((event) => {
+      capturedEvents.push(event)
+    })
+
+    // Call getFeatureFlag which should trigger local evaluation and send a $feature_flag_called event
+    const beforeCall = Date.now()
+    const result = await posthog.getFeatureFlag('simple-flag', 'user-123')
+    const afterCall = Date.now()
+
+    expect(result).toBe(true)
+    expect(capturedEvents).toHaveLength(1)
+
+    const event = capturedEvents[0]
+    expect(event.event).toBe('$feature_flag_called')
+    expect(event.properties.locally_evaluated).toBe(true)
+    expect(event.properties.$feature_flag_definitions_loaded_at).toBe(flagDefinitionsLoadedAt)
+    expect(event.properties.$feature_flag_evaluated_at).toBeGreaterThanOrEqual(beforeCall)
+    expect(event.properties.$feature_flag_evaluated_at).toBeLessThanOrEqual(afterCall)
+  })
+
+  it('tracks flag definitions loaded timestamp', async () => {
+    const flags = {
+      flags: [
+        {
+          id: 1,
+          name: 'Test Flag',
+          key: 'test-flag',
+          active: true,
+          filters: {
+            groups: [{ properties: [], rollout_percentage: 100 }],
+          },
+        },
+      ],
+    }
+
+    mockedFetch.mockImplementation(apiImplementation({ localFlags: flags }))
+
+    posthog = new PostHog('TEST_API_KEY', {
+      host: 'http://example.com',
+      personalApiKey: 'TEST_PERSONAL_API_KEY',
+      sendFeatureFlagEvent: true, // Explicitly enable feature flag events
+      ...posthogImmediateResolveOptions,
+    })
+
+    // Wait for flags to load
+    await jest.runOnlyPendingTimersAsync()
+
+    // Check that flag definitions loaded timestamp is available
+    const flagDefinitionsLoadedAt = posthog.featureFlagsPoller?.getFlagDefinitionsLoadedAt()
+    expect(flagDefinitionsLoadedAt).toBeDefined()
+    expect(typeof flagDefinitionsLoadedAt).toBe('number')
+    expect(flagDefinitionsLoadedAt).toBeGreaterThan(0)
   })
 })

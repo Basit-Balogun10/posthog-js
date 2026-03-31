@@ -193,6 +193,10 @@ exports[`config snapshot for PostHogConfig 1`] = `
         "undefined",
         "false",
         "true"
+      ],
+      "serviceName": [
+        "undefined",
+        "string"
       ]
     }
   ],
@@ -411,6 +415,10 @@ exports[`config snapshot for PostHogConfig 1`] = `
       "undefined",
       "false",
       "true"
+    ],
+    "sampleRate": [
+      "undefined",
+      "number"
     ]
   },
   "error_tracking": {
@@ -486,7 +494,19 @@ exports[`config snapshot for PostHogConfig 1`] = `
     "true"
   ],
   "feature_flag_request_timeout_ms": "number",
+  "feature_flag_cache_ttl_ms": [
+    "undefined",
+    "number"
+  ],
+  "advanced_feature_flags_dedup_per_session": [
+    "false",
+    "true"
+  ],
   "surveys_request_timeout_ms": "number",
+  "remote_config_refresh_interval_ms": [
+    "undefined",
+    "number"
+  ],
   "get_device_id": "(uuid: string) => string",
   "before_send": [
     "undefined",
@@ -639,14 +659,20 @@ exports[`config snapshot for PostHogConfig 1`] = `
     "\\"always\\"",
     "\\"on_reject\\""
   ],
+  "internal_or_test_user_hostname": [
+    "undefined",
+    "null",
+    "string",
+    "RegExp"
+  ],
+  "override_display_language": [
+    "undefined",
+    "null",
+    "string"
+  ],
   "__add_tracing_headers": [
     "undefined",
     "string[]"
-  ],
-  "__preview_remote_config": [
-    "undefined",
-    "false",
-    "true"
   ],
   "__preview_flags_v2": [
     "undefined",

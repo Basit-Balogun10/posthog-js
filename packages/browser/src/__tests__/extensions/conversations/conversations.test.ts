@@ -22,6 +22,9 @@ describe('PostHogConversations', () => {
             hide: jest.fn(),
             reset: jest.fn(),
             isVisible: jest.fn().mockReturnValue(true),
+            requestRestoreLink: jest.fn(),
+            restoreFromToken: jest.fn(),
+            restoreFromUrlToken: jest.fn(),
         } as ConversationsManager
 
         // Setup mock PostHog instance
@@ -155,6 +158,13 @@ describe('PostHogConversations', () => {
 
             conversations.loadIfEnabled()
             expect(assignableWindow.__PosthogExtensions__?.loadExternalDependency).toHaveBeenCalledTimes(1)
+        })
+
+        it('should not load for toolbar internal instance', () => {
+            mockPostHog.config.name = 'ph_toolbar_internal'
+            conversations.onRemoteConfig(validRemoteConfig as RemoteConfig)
+
+            expect(assignableWindow.__PosthogExtensions__?.loadExternalDependency).not.toHaveBeenCalled()
         })
 
         it('should not load if conversations are disabled', () => {
@@ -446,6 +456,56 @@ describe('PostHogConversations', () => {
             // Bundle should still load - domain check is done in ConversationsManager
             expect(mockInit).toHaveBeenCalled()
             expect(conversations.isAvailable()).toBe(true)
+        })
+    })
+
+    describe('identity handling', () => {
+        it('should pass PostHog instance to initConversations for identity checks', () => {
+            // Create a PostHog instance where _isIdentified returns true
+            const identifiedPostHog = createMockPostHog({
+                config: createMockConfig({
+                    api_host: 'https://test.posthog.com',
+                    token: 'test-token',
+                    disable_conversations: false,
+                }),
+                persistence: createMockPersistence({
+                    props: {},
+                }),
+                requestRouter: {
+                    endpointFor: jest.fn().mockReturnValue('https://test.posthog.com/api/test'),
+                } as any,
+                consent: {
+                    isOptedOut: jest.fn().mockReturnValue(false),
+                } as any,
+                get_distinct_id: jest.fn().mockReturnValue('identified-user-123'),
+                on: jest.fn().mockReturnValue(jest.fn()),
+                capture: jest.fn(),
+                _isIdentified: jest.fn().mockReturnValue(true),
+            })
+
+            const mockInit = jest.fn().mockReturnValue(mockManager)
+            assignableWindow.__PosthogExtensions__ = {
+                initConversations: mockInit,
+            }
+
+            const identifiedConversations = new PostHogConversations(identifiedPostHog)
+
+            const remoteConfig: Partial<RemoteConfig> = {
+                conversations: {
+                    enabled: true,
+                    token: 'test-token',
+                } as ConversationsRemoteConfig,
+            }
+
+            identifiedConversations.onRemoteConfig(remoteConfig as RemoteConfig)
+
+            // The initConversations is called with the PostHog instance
+            // The ConversationsManager will use posthog._isIdentified() to determine
+            // if the identification form should be shown
+            expect(mockInit).toHaveBeenCalledWith(
+                expect.objectContaining({ enabled: true, token: 'test-token' }),
+                identifiedPostHog
+            )
         })
     })
 })

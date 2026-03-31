@@ -5,6 +5,7 @@ import { RemoteConfig } from './types'
 import { createLogger } from './utils/logger'
 import { isArray, isNullish } from '@posthog/core'
 import { assignableWindow } from './utils/globals'
+import { Extension } from './extensions/types'
 
 const logger = createLogger('[Product Tours]')
 
@@ -31,19 +32,31 @@ const isProductToursEnabled = (instance: PostHog): boolean => {
     return !!instance.persistence?.get_property(PRODUCT_TOURS_ENABLED_SERVER_SIDE)
 }
 
-export class PostHogProductTours {
+export class PostHogProductTours implements Extension {
     private _instance: PostHog
     private _productTourManager: ProductTourManagerInterface | null = null
     private _cachedTours: ProductTour[] | null = null
+
+    private get _persistence() {
+        return this._instance.persistence
+    }
 
     constructor(instance: PostHog) {
         this._instance = instance
     }
 
+    initialize() {
+        this.loadIfEnabled()
+    }
+
     onRemoteConfig(response: RemoteConfig): void {
-        if (this._instance.persistence) {
-            this._instance.persistence.register({
-                [PRODUCT_TOURS_ENABLED_SERVER_SIDE]: !!response?.productTours,
+        if (!('productTours' in response)) {
+            return
+        }
+
+        if (this._persistence) {
+            this._persistence.register({
+                [PRODUCT_TOURS_ENABLED_SERVER_SIDE]: !!response.productTours,
             })
         }
         this.loadIfEnabled()
@@ -83,7 +96,7 @@ export class PostHogProductTours {
             return
         }
 
-        const persistence = this._instance.persistence
+        const persistence = this._persistence
         if (persistence) {
             const storedTours = persistence.props[PRODUCT_TOURS_STORAGE_KEY]
             if (isArray(storedTours) && !forceReload) {
@@ -160,7 +173,7 @@ export class PostHogProductTours {
 
     clearCache(): void {
         this._cachedTours = null
-        this._instance.persistence?.unregister(PRODUCT_TOURS_STORAGE_KEY)
+        this._persistence?.unregister(PRODUCT_TOURS_STORAGE_KEY)
     }
 
     resetTour(tourId: string): void {

@@ -347,6 +347,61 @@ describe('PostHog Node.js', () => {
       await client.shutdown()
     })
 
+    it('should include registered properties in captured events', async () => {
+      posthog.register({ registered_prop: 'registered_value', another: 123 })
+
+      posthog.capture({ distinctId: '123', event: 'test-event', properties: { foo: 'bar' } })
+
+      await waitForFlushTimer()
+
+      const batchEvents = getLastBatchEvents()
+      expect(batchEvents).toEqual([
+        expect.objectContaining({
+          distinct_id: '123',
+          event: 'test-event',
+          properties: expect.objectContaining({
+            registered_prop: 'registered_value',
+            another: 123,
+            foo: 'bar',
+          }),
+        }),
+      ])
+    })
+
+    it('should allow capture properties to override registered properties', async () => {
+      posthog.register({ foo: 'registered_value', only_registered: 'yes' })
+
+      posthog.capture({ distinctId: '123', event: 'test-event', properties: { foo: 'override_value' } })
+
+      await waitForFlushTimer()
+
+      const batchEvents = getLastBatchEvents()
+      // The registered-only property should still be present
+      expect(batchEvents?.[0].properties).toEqual(
+        expect.objectContaining({
+          only_registered: 'yes',
+          foo: 'override_value',
+        })
+      )
+    })
+
+    it('should stop including unregistered properties', async () => {
+      posthog.register({ foo: 'bar', remove_me: 'value' })
+      posthog.unregister('remove_me')
+
+      posthog.capture({ distinctId: '123', event: 'test-event' })
+
+      await waitForFlushTimer()
+
+      const batchEvents = getLastBatchEvents()
+      expect(batchEvents?.[0].properties).toEqual(
+        expect.objectContaining({
+          foo: 'bar',
+        })
+      )
+      expect(batchEvents?.[0].properties).not.toHaveProperty('remove_me')
+    })
+
     it('should warn if capture is called with a string', () => {
       posthog.debug(true)
       // @ts-expect-error - Testing the warning when passing a string instead of an object
@@ -590,6 +645,59 @@ describe('PostHog Node.js', () => {
     })
   })
 
+  describe('request timeout', () => {
+    beforeEach(() => {
+      jest.useRealTimers()
+    })
+
+    afterEach(() => {
+      jest.useFakeTimers()
+    })
+
+    it('should abort a slow fetch after requestTimeout', async () => {
+      // A fetch that hangs forever but respects the AbortSignal — just like a real
+      // server that never responds. When our AbortController fires, the signal's
+      // abort event rejects the promise, mimicking real fetch abort behavior.
+      const hangingFetch = jest.fn((_url: string, init?: { signal?: AbortSignal }) => {
+        return new Promise<Response>((_resolve, reject) => {
+          if (init?.signal?.aborted) {
+            reject(new DOMException('The operation was aborted', 'AbortError'))
+            return
+          }
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted', 'AbortError'))
+          })
+        })
+      })
+
+      const ph = new PostHog('TEST_API_KEY', {
+        host: 'http://example.com',
+        fetch: hangingFetch as any,
+        fetchRetryCount: 0,
+        flushAt: 100, // high value so capture() doesn't auto-flush
+        flushInterval: 0,
+        requestTimeout: 10,
+        disableCompression: true,
+      })
+
+      const errors: any[] = []
+      ph.on('error', (err: any) => errors.push(err))
+
+      ph.capture({ event: 'test-event', distinctId: '123' })
+
+      // shutdown() joins the promise queue (waits for capture's async prepareEventMessage),
+      // then flushes. The flush calls fetchWithRetry → hangingFetch → abort fires after 10ms.
+      // _flush() catch emits 'error' (posthog-core-stateless.ts:1159) and re-throws.
+      // doShutdown() catches the PostHogFetchError and returns cleanly.
+      await ph.shutdown()
+
+      expect(hangingFetch).toHaveBeenCalled()
+      expect(errors).toHaveLength(1)
+      expect(errors[0].name).toBe('PostHogFetchNetworkError')
+      expect(errors[0].error.name).toBe('AbortError')
+    }, 10000)
+  })
+
   describe('groupIdentify', () => {
     it('should identify group with unique id', async () => {
       posthog.groupIdentify({ groupType: 'posthog', groupKey: 'team-1', properties: { analytics: true } })
@@ -756,7 +864,7 @@ describe('PostHog Node.js', () => {
       )
       expect(mockedFetch).toHaveBeenCalledTimes(1)
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST', body: expect.stringContaining('"geoip_disable":true') })
       )
     })
@@ -790,7 +898,7 @@ describe('PostHog Node.js', () => {
       await waitForPromises()
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST' })
       )
 
@@ -815,7 +923,7 @@ describe('PostHog Node.js', () => {
 
       expect(mockedFetch).not.toHaveBeenCalledWith(...anyLocalEvalCall)
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST', body: expect.stringContaining('"geoip_disable":true') })
       )
     })
@@ -878,7 +986,7 @@ describe('PostHog Node.js', () => {
       expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
       // no flags call
       expect(mockedFetch).not.toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST' })
       )
 
@@ -937,7 +1045,7 @@ describe('PostHog Node.js', () => {
       expect(mockedFetch).toHaveBeenCalledWith(...anyLocalEvalCall)
       // no flags call
       expect(mockedFetch).not.toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST' })
       )
 
@@ -986,7 +1094,7 @@ describe('PostHog Node.js', () => {
       await waitForFlushTimer()
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST', body: expect.not.stringContaining('geoip_disable') })
       )
 
@@ -1135,7 +1243,7 @@ describe('PostHog Node.js', () => {
 
         // Should make remote flags call
         expect(mockedFetch).toHaveBeenCalledWith(
-          'http://example.com/flags/?v=2&config=true',
+          'http://example.com/flags/?v=2',
           expect.objectContaining({
             method: 'POST',
             body: expect.stringContaining('"plan":"premium"'),
@@ -1195,7 +1303,7 @@ describe('PostHog Node.js', () => {
 
         // Should not make remote flags call
         expect(mockedFetch).not.toHaveBeenCalledWith(
-          'http://example.com/flags/?v=2&config=true',
+          'http://example.com/flags/?v=2',
           expect.objectContaining({ method: 'POST' })
         )
 
@@ -1381,7 +1489,7 @@ describe('PostHog Node.js', () => {
 
         // Should not make remote flags call
         expect(mockedFetch).not.toHaveBeenCalledWith(
-          'http://example.com/flags/?v=2&config=true',
+          'http://example.com/flags/?v=2',
           expect.objectContaining({ method: 'POST' })
         )
 
@@ -1490,7 +1598,7 @@ describe('PostHog Node.js', () => {
 
         // Should make remote flags call since local evaluation has no flags
         expect(mockedFetch).toHaveBeenCalledWith(
-          'http://example.com/flags/?v=2&config=true',
+          'http://example.com/flags/?v=2',
           expect.objectContaining({
             method: 'POST',
             body: expect.stringContaining('"plan":"premium"'),
@@ -1713,7 +1821,7 @@ describe('PostHog Node.js', () => {
 
         // Should not make any remote calls for flags
         expect(mockedFetch).not.toHaveBeenCalledWith(
-          'http://example.com/flags/?v=2&config=true',
+          'http://example.com/flags/?v=2',
           expect.objectContaining({ method: 'POST' })
         )
 
@@ -1767,7 +1875,7 @@ describe('PostHog Node.js', () => {
 
         // Should make remote calls for flags
         expect(mockedFetch).toHaveBeenCalledWith(
-          'http://example.com/flags/?v=2&config=true',
+          'http://example.com/flags/?v=2',
           expect.objectContaining({ method: 'POST' })
         )
 
@@ -2222,7 +2330,7 @@ describe('PostHog Node.js', () => {
       ).resolves.toEqual(2)
       expect(mockedFetch).toHaveBeenCalledTimes(1)
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST', body: expect.stringContaining('"geoip_disable":true') })
       )
     })
@@ -2263,7 +2371,7 @@ describe('PostHog Node.js', () => {
       ).resolves.toEqual([1])
       expect(mockedFetch).toHaveBeenCalledTimes(1)
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST', body: expect.stringContaining('"geoip_disable":true') })
       )
     })
@@ -2283,7 +2391,7 @@ describe('PostHog Node.js', () => {
       ).resolves.toEqual(2)
       expect(mockedFetch).toHaveBeenCalledTimes(1)
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST', body: expect.stringContaining('"geoip_disable":true') })
       )
 
@@ -2292,7 +2400,7 @@ describe('PostHog Node.js', () => {
       await expect(posthog.isFeatureEnabled('feature-variant', '123', { disableGeoip: false })).resolves.toEqual(true)
       expect(mockedFetch).toHaveBeenCalledTimes(1)
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({ method: 'POST', body: expect.not.stringContaining('geoip_disable') })
       )
     })
@@ -2306,7 +2414,7 @@ describe('PostHog Node.js', () => {
       jest.runOnlyPendingTimers()
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           body: JSON.stringify({
             token: 'TEST_API_KEY',
@@ -2336,7 +2444,7 @@ describe('PostHog Node.js', () => {
       jest.runOnlyPendingTimers()
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           body: JSON.stringify({
             token: 'TEST_API_KEY',
@@ -2367,7 +2475,7 @@ describe('PostHog Node.js', () => {
       jest.runOnlyPendingTimers()
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           body: JSON.stringify({
             token: 'TEST_API_KEY',
@@ -2391,7 +2499,7 @@ describe('PostHog Node.js', () => {
       jest.runOnlyPendingTimers()
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           body: JSON.stringify({
             token: 'TEST_API_KEY',
@@ -2411,7 +2519,7 @@ describe('PostHog Node.js', () => {
       jest.runOnlyPendingTimers()
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           body: JSON.stringify({
             token: 'TEST_API_KEY',
@@ -2433,7 +2541,7 @@ describe('PostHog Node.js', () => {
       jest.runOnlyPendingTimers()
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           body: JSON.stringify({
             token: 'TEST_API_KEY',
@@ -2493,7 +2601,7 @@ describe('PostHog Node.js', () => {
       await posthogWithEnvs.getAllFlags('some-distinct-id')
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           method: 'POST',
           body: expect.stringContaining('"evaluation_contexts":["production","backend"]'),
@@ -2519,7 +2627,7 @@ describe('PostHog Node.js', () => {
       await posthogWithoutEnvs.getAllFlags('some-distinct-id')
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           method: 'POST',
           body: expect.not.stringContaining('evaluation_contexts'),
@@ -2546,7 +2654,7 @@ describe('PostHog Node.js', () => {
       await posthogWithEmptyEnvs.getAllFlags('some-distinct-id')
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           method: 'POST',
           body: expect.not.stringContaining('evaluation_contexts'),
@@ -2573,7 +2681,7 @@ describe('PostHog Node.js', () => {
       await posthogWithDeprecated.getAllFlags('some-distinct-id')
 
       expect(mockedFetch).toHaveBeenCalledWith(
-        'http://example.com/flags/?v=2&config=true',
+        'http://example.com/flags/?v=2',
         expect.objectContaining({
           method: 'POST',
           body: expect.stringContaining('"evaluation_contexts":["production","backend"]'),

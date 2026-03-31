@@ -39,7 +39,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
@@ -59,9 +59,11 @@ jobs:
       - name: Update version in package.json
         if: steps.bump-type.outputs.bump-type != 'null'
         working-directory: packages/browser
+        env:
+          NEW_VERSION: ${{ steps.versions.outputs.new-version }}
         run: |
           mv package.json package.old.json
-          jq --indent 4 '.version = "${{ steps.versions.outputs.new-version }}"' package.old.json > package.json
+          jq --indent 4 ".version = \"$NEW_VERSION\"" package.old.json > package.json
           rm package.old.json
 
       - name: Publish the alpha in the npm registry

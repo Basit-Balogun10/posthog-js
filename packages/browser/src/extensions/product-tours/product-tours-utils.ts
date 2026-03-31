@@ -1,17 +1,26 @@
 import DOMPurify from 'dompurify'
 
 import {
+    JSONContent,
     ProductTourAppearance,
     ProductTourSelectorError,
     ProductTourStep,
     DEFAULT_PRODUCT_TOUR_APPEARANCE,
+    ProductTourWaitPeriod,
 } from '../../posthog-product-tours-types'
 import { findElement } from './element-inference'
 import { prepareStylesheet } from '../utils/stylesheet-loader'
 import { document as _document, window as _window } from '../../utils/globals'
 import { getFontFamily, getContrastingTextColor, hexToRgba } from '../surveys/surveys-extension-utils'
+import { createLogger } from '../../utils/logger'
+import { localStore } from '../../storage'
+import { LAST_SEEN_TOUR_DATE_KEY_PREFIX } from './constants'
 
 import productTourStyles from './product-tour.css'
+import { isUndefined } from '@posthog/core'
+import { hasPeriodPassed } from '../utils/matcher-utils'
+
+const logger = createLogger('[Product Tours]')
 
 const document = _document as Document
 const window = _window as Window & typeof globalThis
@@ -26,6 +35,13 @@ export interface ElementFindResult {
     element: HTMLElement | null
     error: ProductTourSelectorError | null
     matchCount: number
+}
+
+export function hasElementTarget(step: ProductTourStep): boolean {
+    if (step.useManualSelector) {
+        return !!step.selector
+    }
+    return !!step.inferenceData
 }
 
 export function findElementBySelector(selector: string): ElementFindResult {
@@ -276,6 +292,59 @@ function escapeHtml(text: string): string {
     return div.innerHTML
 }
 
+export function resolveStepTranslation(step: ProductTourStep, lang: string | null): ProductTourStep {
+    if (!lang || !step.translations) {
+        return step
+    }
+
+    const translations = step.translations
+
+    // exact match (en-US === en-US), then base match (en-US falls back to en)
+    const t = translations[lang] ?? translations[lang.split('-')[0]]
+
+    if (!t) {
+        logger.info(`No matching translation for "${lang}" in step ${step.id}, using default`)
+        return step
+    }
+
+    const resolved = { ...step }
+
+    if (!isUndefined(t.content)) {
+        resolved.content = t.content
+    }
+
+    if (!isUndefined(t.contentHtml)) {
+        resolved.contentHtml = t.contentHtml
+    }
+
+    if (t.buttons && resolved.buttons) {
+        resolved.buttons = {
+            primary: resolved.buttons.primary && { ...resolved.buttons.primary, ...t.buttons.primary },
+            secondary: resolved.buttons.secondary && { ...resolved.buttons.secondary, ...t.buttons.secondary },
+        }
+    }
+
+    if (t.survey && resolved.survey) {
+        resolved.survey = { ...resolved.survey, ...t.survey }
+    }
+
+    return resolved
+}
+
+export function getStepImageUrls(step: ProductTourStep): string[] {
+    const urls: string[] = []
+    function walk(node: JSONContent) {
+        if (node.type === 'image' && node.attrs?.src) {
+            urls.push(node.attrs.src)
+        }
+        node.content?.forEach(walk)
+    }
+    if (step.content) {
+        walk(step.content)
+    }
+    return urls
+}
+
 export function getStepHtml(step: ProductTourStep): string {
     if (step.contentHtml) {
         return DOMPurify.sanitize(step.contentHtml, {
@@ -286,4 +355,38 @@ export function getStepHtml(step: ProductTourStep): string {
 
     // backwards compat, will be deprecated
     return renderTipTapContent(step.content)
+}
+
+export function hasTourWaitPeriodPassed(seenTourWaitPeriod?: ProductTourWaitPeriod): boolean {
+    if (!seenTourWaitPeriod) {
+        return true
+    }
+
+    const { days, types } = seenTourWaitPeriod
+    if (!days || !types || types.length === 0) {
+        return true
+    }
+
+    let mostRecentDate: Date | null = null
+
+    for (const type of types) {
+        const raw = localStore._get(`${LAST_SEEN_TOUR_DATE_KEY_PREFIX}${type}`)
+        if (raw) {
+            try {
+                const stored = JSON.parse(raw)
+                const date = new Date(stored)
+                if (!isNaN(date.getTime()) && (!mostRecentDate || date > mostRecentDate)) {
+                    mostRecentDate = date
+                }
+            } catch {
+                // ignore malformed entries
+            }
+        }
+    }
+
+    if (!mostRecentDate) {
+        return true
+    }
+
+    return hasPeriodPassed(days, mostRecentDate)
 }

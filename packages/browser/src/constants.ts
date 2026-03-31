@@ -57,6 +57,9 @@ export const SURVEYS_ACTIVATED = '$surveys_activated'
 export const PRODUCT_TOURS_ACTIVATED = '$product_tours_activated'
 export const CONVERSATIONS = '$conversations'
 export const FLAG_CALL_REPORTED = '$flag_call_reported'
+export const FLAG_CALL_REPORTED_SESSION_ID = '$flag_call_reported_session_id'
+export const PERSISTENCE_FEATURE_FLAG_ERRORS = '$feature_flag_errors'
+export const PERSISTENCE_FEATURE_FLAG_EVALUATED_AT = '$feature_flag_evaluated_at'
 export const USER_STATE = '$user_state'
 export const CLIENT_SESSION_PROPS = '$client_session_props'
 export const CAPTURE_RATE_LIMIT = '$capture_rate_limit'
@@ -97,17 +100,42 @@ export const PERSISTENCE_RESERVED_PROPERTIES = [
     STORED_PERSON_PROPERTIES_KEY,
     SURVEYS,
     FLAG_CALL_REPORTED,
+    FLAG_CALL_REPORTED_SESSION_ID,
+    PERSISTENCE_FEATURE_FLAG_ERRORS,
+    PERSISTENCE_FEATURE_FLAG_EVALUATED_AT,
     CLIENT_SESSION_PROPS,
     CAPTURE_RATE_LIMIT,
     INITIAL_CAMPAIGN_PARAMS,
     INITIAL_REFERRER_INFO,
     ENABLE_PERSON_PROCESSING,
     INITIAL_PERSON_INFO,
-    // Conversations keys (defined in lazy-loaded extension)
-    '$conversations_widget_session_id',
-    '$conversations_ticket_id',
-    '$conversations_widget_state',
-    '$conversations_user_traits',
 ]
 
 export const SURVEYS_REQUEST_TIMEOUT_MS = 10000
+export const LOAD_EXT_NOT_FOUND = 'PostHog loadExternalDependency extension not found.'
+
+/* EVENT NAMES - interned to reduce bundle size */
+/* COOKIELESS MODE VALUES */
+export const COOKIELESS_ON_REJECT = 'on_reject' as const
+export const COOKIELESS_ALWAYS = 'always' as const
+
+/* USER STATE VALUES */
+export const USER_STATE_ANONYMOUS = 'anonymous'
+export const USER_STATE_IDENTIFIED = 'identified'
+
+/* PERSON PROFILE MODES */
+export const PERSON_PROFILES_IDENTIFIED_ONLY = 'identified_only' as const
+
+/* DOM EVENT NAMES - interned to reduce bundle size */
+export const DOM_EVENT_VISIBILITYCHANGE = 'visibilitychange'
+export const DOM_EVENT_BEFOREUNLOAD = 'beforeunload'
+
+export const EVENT_PAGEVIEW = '$pageview'
+export const EVENT_PAGELEAVE = '$pageleave'
+export const EVENT_IDENTIFY = '$identify'
+export const EVENT_GROUPIDENTIFY = '$groupidentify'
+
+/* Z-INDEX HIERARCHY: tours > surveys > support */
+export const Z_INDEX_TOURS = 2147483646
+export const Z_INDEX_SURVEYS = 2147483645
+export const Z_INDEX_CONVERSATIONS = 2147483644

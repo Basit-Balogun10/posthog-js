@@ -9,6 +9,10 @@ env:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   browsers:
     name: Test on ${{ matrix.tests.name }}
@@ -35,7 +39,7 @@ jobs:
             install: "chromium"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 

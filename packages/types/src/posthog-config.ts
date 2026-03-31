@@ -204,6 +204,8 @@ export interface DeadClickCandidate {
     mutationDelayMs?: number
     // time between click and the most recent selection changed event
     selectionChangedDelayMs?: number
+    // time between click and the most recent visibility change event
+    visibilityChangedDelayMs?: number
     // if neither scroll nor mutation seen before threshold passed
     absoluteDelayMs?: number
 }
@@ -527,6 +529,17 @@ export interface SessionRecordingOptions {
      * @default false
      */
     strictMinimumDuration?: boolean
+
+    /**
+     * The sample rate for session recordings, a number between 0 and 1.
+     * For example, 0.5 means roughly 50% of sessions will be recorded.
+     *
+     * When `undefined`, falls back to the remote config setting.
+     * When set, takes precedence over the remote config.
+     *
+     * @default undefined
+     */
+    sampleRate?: number
 }
 
 // we used to call a request that was sent to the queue with options attached `RequestQueueOptions`
@@ -556,6 +569,12 @@ export interface SurveyConfig {
  */
 export interface LogsConfig {
     captureConsoleLogs?: boolean
+    /**
+     * The service name to use in OpenTelemetry resource attributes for logs.
+     *
+     * @default 'posthog-browser-logs'
+     */
+    serviceName?: string
 }
 
 // See https://nextjs.org/docs/app/api-reference/functions/fetch#fetchurl-options
@@ -867,6 +886,9 @@ export interface PostHogConfig {
 
     /**
      * Determines whether PostHog should enable recording console logs.
+     *
+     * This is related to the Session Recording feature. For more session recording
+     * settings, see the `session_recording` and `capture_performance` configuration option.
      * When undefined, it falls back to the remote config setting.
      *
      * @default undefined
@@ -1016,6 +1038,8 @@ export interface PostHogConfig {
 
     /**
      * Determines the session recording options.
+     *
+     * For more session recording settings, see the `enable_recording_console_log` and `capture_performance` configuration option.
      *
      * @see `SessionRecordingOptions`
      * @default {}
@@ -1181,11 +1205,58 @@ export interface PostHogConfig {
     feature_flag_request_timeout_ms: number
 
     /**
+     * Sets the maximum age (in milliseconds) for cached feature flag values.
+     * When the cache is older than this value:
+     * - `getFeatureFlag()` will return `undefined` instead of stale cached values
+     * - `$feature/` properties will not be attached to events
+     * - A background refresh will be triggered automatically
+     *
+     * This prevents stale feature flag values from being used when the `/flags` request
+     * fails (e.g., due to ad blockers or network issues).
+     *
+     * When not set or set to `0`, cache expiration is disabled (cached values never expire).
+     */
+    feature_flag_cache_ttl_ms?: number
+
+    /**
+     * When enabled, `$feature_flag_called` event deduplication is scoped to the current session.
+     *
+     * By default, the SDK deduplicates `$feature_flag_called` events globally and only re-emits
+     * them when `identify` (with a new distinct ID) or `reset` is called. This can be problematic
+     * for experiments: if a flag is checked before an experiment starts, the event is cached and
+     * won't fire again for that user until identify/reset, meaning the experiment never sees the event.
+     *
+     * When this option is `true`, the deduplication cache is keyed on the session ID, so each new
+     * session will re-emit `$feature_flag_called` for every flag that is checked.
+     *
+     * @default false
+     */
+    advanced_feature_flags_dedup_per_session: boolean
+
+    /**
      * Sets timeout for fetching surveys
      *
      * @default 10000
      */
     surveys_request_timeout_ms: number
+
+    /**
+     * Controls how often feature flags are automatically refreshed in long-running sessions.
+     *
+     * By default, feature flags are refreshed every 5 minutes (300000ms) to pick up server-side
+     * flag changes without requiring a page reload. This is useful for SPAs and long-running tabs.
+     *
+     * **Tradeoffs:**
+     * - **Shorter intervals**: Feature flag changes propagate faster, but increases network requests and server load.
+     * - **Longer intervals**: Reduces network traffic (better for mobile/battery), but flag changes take longer to propagate.
+     * - **Disabled (0)**: No background refreshes. Flags only update on page load or manual `reloadFeatureFlags()` calls.
+     *   Use this if you control flag updates manually or have infrequent flag changes.
+     *
+     * Note: Refreshes are automatically skipped when the browser tab is hidden.
+     *
+     * @default 300000 (5 minutes)
+     */
+    remote_config_refresh_interval_ms?: number
 
     /**
      * Function to get the device ID.
@@ -1214,7 +1285,10 @@ export interface PostHogConfig {
 
     /**
      * Determines whether to capture performance metrics.
-     * These include Network Timing and Web Vitals.
+     * These include Network Timing for Session Replay and Web Vitals.
+     *
+     * The `network_timing` option is only used by the Session Replay feature.
+     * For more session recording settings, see the `session_recording` and `enable_recording_console_log` configuration option.
      *
      * When `undefined`, fallback to the remote configuration.
      * If `false`, neither network timing nor web vitals will work.
@@ -1365,6 +1439,41 @@ export interface PostHogConfig {
      * */
     cookieless_mode?: 'always' | 'on_reject'
 
+    /**
+     * A hostname pattern to match test environments. When the current hostname matches,
+     * `setInternalOrTestUser()` is called automatically on startup, enabling person processing
+     * and setting `$internal_or_test_user: true`.
+     *
+     * Can be a string (exact match) or RegExp (pattern match).
+     * Set to `null` to explicitly disable (useful when using `defaults: '2026-01-30'`).
+     *
+     * @default undefined (when defaults is before '2026-01-30')
+     * @default /^(localhost|127\.0\.0\.1)$/ (when defaults >= '2026-01-30')
+     *
+     * @example
+     * ```js
+     * // Exact match
+     * posthog.init('token', { internal_or_test_user_hostname: 'example.com' })
+     *
+     * // Regex pattern
+     * posthog.init('token', { internal_or_test_user_hostname: /\.local$/ })
+     *
+     * // Disable
+     * posthog.init('token', { internal_or_test_user_hostname: null })
+     * ```
+     */
+    internal_or_test_user_hostname?: string | RegExp | null
+
+    /**
+     * Display language override for Product Tours.
+     *
+     * Must be a valid BCP 47 language code.
+     *
+     * In the future this will be used for Surveys and other products that
+     * deliver in-app experiences to end-users.
+     */
+    override_display_language?: string | null
+
     // ------- PREVIEW CONFIGS -------
 
     /**
@@ -1373,12 +1482,6 @@ export interface PostHogConfig {
      * (X-POSTHOG-DISTINCT-ID, X-POSTHOG-SESSION-ID, X-POSTHOG-WINDOW-ID)
      * */
     __add_tracing_headers?: string[]
-
-    /**
-     * PREVIEW - MAY CHANGE WITHOUT WARNING - DO NOT USE IN PRODUCTION
-     * Enables the new RemoteConfig approach to loading config instead of /flags?v=2&config=true
-     * */
-    __preview_remote_config?: boolean
 
     /**
      * PREVIEW - MAY CHANGE WITHOUT WARNING - DO NOT USE IN PRODUCTION

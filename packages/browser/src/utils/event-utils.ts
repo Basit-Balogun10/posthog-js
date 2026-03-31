@@ -2,7 +2,7 @@ import { convertToURL, getQueryParam, maskQueryParams } from './request-utils'
 import { isNull, stripLeadingDollar } from '@posthog/core'
 import { Properties } from '../types'
 import Config from '../config'
-import { each, extend, extendArray, stripEmptyProperties } from './index'
+import { each, extend, stripEmptyProperties } from './index'
 import { document, location, userAgent, window } from './globals'
 import { detectBrowser, detectBrowserVersion, detectDevice, detectDeviceType, detectOS } from '@posthog/core'
 import { cookieStore } from '../storage'
@@ -34,18 +34,16 @@ export const PERSONAL_DATA_CAMPAIGN_PARAMS = [
     '_kx', // klaviyo
 ]
 
-export const CAMPAIGN_PARAMS = extendArray(
-    [
-        'utm_source',
-        'utm_medium',
-        'utm_campaign',
-        'utm_content',
-        'utm_term',
-        'gad_source', // google ads source
-        'mc_cid', // mailchimp campaign id
-    ],
-    PERSONAL_DATA_CAMPAIGN_PARAMS
-)
+export const CAMPAIGN_PARAMS = [
+    'utm_source',
+    'utm_medium',
+    'utm_campaign',
+    'utm_content',
+    'utm_term',
+    'gad_source', // google ads source
+    'mc_cid', // mailchimp campaign id
+    ...PERSONAL_DATA_CAMPAIGN_PARAMS,
+]
 
 export const EVENT_TO_PERSON_PROPERTIES = [
     // mobile params
@@ -88,7 +86,7 @@ export function getCampaignParams(
     }
 
     const paramsToMask = maskPersonalDataProperties
-        ? extendArray([], PERSONAL_DATA_CAMPAIGN_PARAMS, customPersonalDataProperties || [])
+        ? [...PERSONAL_DATA_CAMPAIGN_PARAMS, ...(customPersonalDataProperties || [])]
         : []
 
     // Initially get campaign params from the URL
@@ -183,15 +181,17 @@ export function getBrowserLanguagePrefix(): string | undefined {
     return typeof lang === 'string' ? lang.split('-')[0] : undefined
 }
 
+const DIRECT = '$direct'
+
 export function getReferrer(): string {
-    return document?.referrer || '$direct'
+    return document?.referrer || DIRECT
 }
 
 export function getReferringDomain(): string {
     if (!document?.referrer) {
-        return '$direct'
+        return DIRECT
     }
-    return convertToURL(document.referrer)?.host || '$direct'
+    return convertToURL(document.referrer)?.host || DIRECT
 }
 
 export function getReferrerInfo(): Record<string, any> {
@@ -203,7 +203,7 @@ export function getReferrerInfo(): Record<string, any> {
 
 export function getPersonInfo(maskPersonalDataProperties?: boolean, customPersonalDataProperties?: string[]) {
     const paramsToMask = maskPersonalDataProperties
-        ? extendArray([], PERSONAL_DATA_CAMPAIGN_PARAMS, customPersonalDataProperties || [])
+        ? [...PERSONAL_DATA_CAMPAIGN_PARAMS, ...(customPersonalDataProperties || [])]
         : []
     const url = location?.href.substring(0, 1000)
     // we're being a bit more economical with bytes here because this is stored in the cookie
@@ -215,8 +215,7 @@ export function getPersonInfo(maskPersonalDataProperties?: boolean, customPerson
 
 export function getPersonPropsFromInfo(info: Record<string, any>): Record<string, any> {
     const { r: referrer, u: url } = info
-    const referring_domain =
-        referrer == null ? undefined : referrer == '$direct' ? '$direct' : convertToURL(referrer)?.host
+    const referring_domain = referrer == null ? undefined : referrer == DIRECT ? DIRECT : convertToURL(referrer)?.host
 
     const props: Record<string, string | undefined> = {
         $referrer: referrer,
@@ -270,16 +269,24 @@ export function getEventProperties(
         return {}
     }
     const paramsToMask = maskPersonalDataProperties
-        ? extendArray([], PERSONAL_DATA_CAMPAIGN_PARAMS, customPersonalDataProperties || [])
+        ? [...PERSONAL_DATA_CAMPAIGN_PARAMS, ...(customPersonalDataProperties || [])]
         : []
     const [os_name, os_version] = detectOS(userAgent)
+
     return extend(
         stripEmptyProperties({
             $os: os_name,
             $os_version: os_version,
             $browser: detectBrowser(userAgent, navigator.vendor),
             $device: detectDevice(userAgent),
-            $device_type: detectDeviceType(userAgent),
+            $device_type: detectDeviceType(userAgent, {
+                // eslint-disable-next-line compat/compat
+                userAgentDataPlatform: navigator?.userAgentData?.platform,
+                maxTouchPoints: navigator?.maxTouchPoints,
+                screenWidth: window?.screen?.width,
+                screenHeight: window?.screen?.height,
+                devicePixelRatio: window?.devicePixelRatio,
+            }),
             $timezone: getTimezone(),
             $timezone_offset: getTimezoneOffset(),
         }),
@@ -295,7 +302,7 @@ export function getEventProperties(
             $screen_width: window?.screen.width,
             $viewport_height: window?.innerHeight,
             $viewport_width: window?.innerWidth,
-            $lib: 'web',
+            $lib: Config.LIB_NAME,
             $lib_version: Config.LIB_VERSION,
             $insert_id: Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10),
             $time: Date.now() / 1000, // epoch time in seconds

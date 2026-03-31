@@ -1,34 +1,71 @@
 export type PostHogCoreOptions = {
-  /** PostHog API host, usually 'https://us.i.posthog.com' or 'https://eu.i.posthog.com' */
+  /**
+   * PostHog API host, usually 'https://us.i.posthog.com' or 'https://eu.i.posthog.com'
+   *
+   * @default 'https://us.i.posthog.com'
+   */
   host?: string
-  /** The number of events to queue before sending to PostHog (flushing) */
+  /**
+   * The number of events to queue before sending to PostHog (flushing)
+   *
+   * @default 20
+   */
   flushAt?: number
-  /** The interval in milliseconds between periodic flushes */
+  /**
+   * The interval in milliseconds between periodic flushes
+   *
+   * @default 10000
+   */
   flushInterval?: number
-  /** The maximum number of queued messages to be flushed as part of a single batch (must be higher than `flushAt`) */
+  /**
+   * The maximum number of queued messages to be flushed as part of a single batch (must be higher than `flushAt`)
+   *
+   * @default 100
+   */
   maxBatchSize?: number
-  /** The maximum number of cached messages either in memory or on the local storage.
-   * Defaults to 1000, (must be higher than `flushAt`)
+  /**
+   * The maximum number of cached messages either in memory or on the local storage (must be higher than `flushAt`)
+   *
+   * @default 1000
    */
   maxQueueSize?: number
-  /** If set to true the SDK is essentially disabled (useful for local environments where you don't want to track anything) */
+  /**
+   * If set to true the SDK is essentially disabled (useful for local environments where you don't want to track anything)
+   *
+   * @default false
+   */
   disabled?: boolean
-  /** If set to false the SDK will not track until the `optIn` function is called. */
+  /**
+   * If set to false the SDK will not track until the `optIn` function is called.
+   *
+   * @default true
+   */
   defaultOptIn?: boolean
-  /** Whether to track that `getFeatureFlag` was called (used by Experiments) */
+  /**
+   * Whether to track that `getFeatureFlag` was called (used by Experiments)
+   *
+   * @default true
+   */
   sendFeatureFlagEvent?: boolean
-  /** Whether to load feature flags when initialized or not */
+  /**
+   * Whether to load feature flags when initialized or not
+   *
+   * @default true
+   */
   preloadFeatureFlags?: boolean
   /**
    * Whether to load remote config when initialized or not
    * Experimental support
-   * Default: false - Remote config is loaded by default
+   *
+   * @default false
    */
   disableRemoteConfig?: boolean
   /**
    * Whether to load surveys when initialized or not
    * Experimental support
-   * Default: false - Surveys are loaded by default, but requires the `PostHogSurveyProvider` to be used
+   * Requires the `PostHogSurveyProvider` to be used
+   *
+   * @default false
    */
   disableSurveys?: boolean
   /** Option to bootstrap the library with given distinctId and feature flags */
@@ -38,22 +75,59 @@ export type PostHogCoreOptions = {
     featureFlags?: Record<string, FeatureFlagValue>
     featureFlagPayloads?: Record<string, JsonType>
   }
-  /** How many times we will retry HTTP requests. Defaults to 3. */
+  /**
+   * How many times we will retry HTTP requests
+   *
+   * @default 3
+   */
   fetchRetryCount?: number
-  /** The delay between HTTP request retries, Defaults to 3 seconds. */
+  /**
+   * The delay between HTTP request retries in milliseconds
+   *
+   * @default 3000
+   */
   fetchRetryDelay?: number
-  /** Timeout in milliseconds for any calls. Defaults to 10 seconds. */
+  /**
+   * Timeout in milliseconds for any calls
+   *
+   * @default 10000
+   */
   requestTimeout?: number
-  /** Timeout in milliseconds for feature flag calls. Defaults to 10 seconds for stateful clients, and 3 seconds for stateless. */
+  /**
+   * Timeout in milliseconds for feature flag calls
+   *
+   * @default 10000 for stateful clients, 3000 for stateless
+   */
   featureFlagsRequestTimeoutMs?: number
-  /** Timeout in milliseconds for remote config calls. Defaults to 3 seconds. */
+  /**
+   * Timeout in milliseconds for remote config calls
+   *
+   * @default 3000
+   */
   remoteConfigRequestTimeoutMs?: number
-  /** For Session Analysis how long before we expire a session (defaults to 30 mins) */
+  /**
+   * For Session Analysis how long before we expire a session in seconds
+   *
+   * @default 1800
+   */
   sessionExpirationTimeSeconds?: number
-  /** Whether to disable GZIP compression */
+  /**
+   * Whether to disable GZIP compression
+   *
+   * @default false
+   */
   disableCompression?: boolean
+  /**
+   * Whether to disable GeoIP lookups
+   *
+   * @default false
+   */
   disableGeoip?: boolean
-  /** Special flag to indicate ingested data is for a historical migration. */
+  /**
+   * Special flag to indicate ingested data is for a historical migration
+   *
+   * @default false
+   */
   historicalMigration?: boolean
   /**
    * Evaluation contexts for feature flags.
@@ -165,6 +239,12 @@ export type PostHogCaptureOptions = {
   /** If provided overrides the auto-generated timestamp */
   timestamp?: Date
   disableGeoip?: boolean
+  /**
+   * Internal flag set by captureException() to indicate this $exception
+   * event originated from the proper exception capture path. Used to warn users who call
+   * capture('$exception') directly.
+   */
+  _originatedFromCaptureException?: boolean
 }
 
 export type PostHogFetchResponse = {
@@ -225,9 +305,46 @@ export type PostHogRemoteConfig = {
    * Indicates if the team has any flags enabled (if not we don't need to load them)
    */
   hasFeatureFlags?: boolean
+
+  /**
+   * Error tracking remote config.
+   * Either a boolean (false = disabled) or a map with configuration.
+   * When a map, `autocaptureExceptions` (boolean) controls whether automatic exception capture is enabled remotely.
+   */
+  errorTracking?:
+    | boolean
+    | {
+        [key: string]: JsonType
+      }
+
+  /**
+   * Capture performance remote config.
+   * Either a boolean (false = disabled) or a map with configuration.
+   * When a map, `network_timing` (boolean) controls whether network timing capture is enabled remotely.
+   */
+  capturePerformance?:
+    | boolean
+    | {
+        [key: string]: JsonType
+      }
 }
 
 export type FeatureFlagValue = string | boolean
+
+/**
+ * Result of evaluating a feature flag, including both the flag value and its payload.
+ */
+export type FeatureFlagResult = {
+  readonly key: string
+  readonly enabled: boolean
+  readonly variant?: string
+  readonly payload?: JsonType
+}
+
+export type FeatureFlagResultOptions = {
+  /** Whether to send a $feature_flag_called event. Defaults to true. */
+  sendEvent?: boolean
+}
 
 export type PostHogFlagsResponse = Omit<PostHogRemoteConfig, 'hasFeatureFlags'> & {
   featureFlags: {
@@ -460,6 +577,18 @@ export enum SurveyQuestionDescriptionContentType {
   Text = 'text',
 }
 
+// Survey validation types
+export enum SurveyValidationType {
+  MinLength = 'min_length',
+  MaxLength = 'max_length',
+}
+
+export interface SurveyValidationRule {
+  type: SurveyValidationType
+  value?: number
+  errorMessage?: string
+}
+
 type SurveyQuestionBase = {
   question: string
   id: string
@@ -469,6 +598,7 @@ type SurveyQuestionBase = {
   buttonText?: string
   originalQuestionIndex: number
   branching?: NextQuestionBranching | EndBranching | ResponseBasedBranching | SpecificQuestionBranching
+  validation?: SurveyValidationRule[]
 }
 
 export type BasicSurveyQuestion = SurveyQuestionBase & {

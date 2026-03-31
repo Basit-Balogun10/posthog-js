@@ -184,6 +184,7 @@ describe('PostHog React Native', () => {
       $device_manufacturer: 'mock',
       $device_type: 'Mobile',
       // $device_name: 'mock', (deleted)
+      $is_emulator: false,
       $os_name: 'mock',
       $os_version: 'mock',
       $locale: 'mock',
@@ -479,13 +480,14 @@ describe('PostHog React Native', () => {
     it('do not rotate session id on restart', async () => {
       const sessionId = '0192244d-a627-7ae2-b22a-ccd594bed71d'
       rnStorage.setItem(PostHogPersistedProperty.SessionId, sessionId)
-      const now = JSON.stringify(Date.now())
+      const now = Date.now()
       rnStorage.setItem(PostHogPersistedProperty.SessionLastTimestamp, now)
       rnStorage.setItem(PostHogPersistedProperty.SessionStartTimestamp, now)
 
       posthog = new PostHog('1', {
         customStorage: storage,
         enablePersistSessionIdAcrossRestart: true,
+        captureAppLifecycleEvents: false,
       })
 
       expect(posthog.getPersistedProperty(PostHogPersistedProperty.SessionId)).toEqual(sessionId)
@@ -496,13 +498,14 @@ describe('PostHog React Native', () => {
     it('rotate session id on restart if persist session id across restart is disabled', async () => {
       const sessionId = '0192244d-a627-7ae2-b22a-ccd594bed71d'
       rnStorage.setItem(PostHogPersistedProperty.SessionId, sessionId)
-      const now = JSON.stringify(Date.now())
+      const now = Date.now()
       rnStorage.setItem(PostHogPersistedProperty.SessionLastTimestamp, now)
       rnStorage.setItem(PostHogPersistedProperty.SessionStartTimestamp, now)
 
       posthog = new PostHog('1', {
         customStorage: storage,
         enablePersistSessionIdAcrossRestart: false,
+        captureAppLifecycleEvents: false,
       })
 
       expect(posthog.getPersistedProperty(PostHogPersistedProperty.SessionId)).toEqual(undefined)
@@ -707,6 +710,7 @@ describe('PostHog React Native', () => {
             $device_type: 'Mobile',
             $os_name: 'iOS',
           },
+          preloadFeatureFlags: false,
         })
         await posthog.ready()
         ;(globalThis as any).window.fetch.mockClear()
@@ -987,6 +991,32 @@ describe('PostHog React Native', () => {
         expect((globalThis as any).window.fetch).not.toHaveBeenCalled()
       })
 
+      it('should reload feature flags by default when calling setPersonProperties', async () => {
+        posthog.setPersonProperties({ email: 'test@example.com' })
+
+        await waitForExpect(200, () => {
+          expect((globalThis as any).window.fetch).toHaveBeenCalledWith(
+            expect.stringContaining('/flags/'),
+            expect.any(Object)
+          )
+        })
+      })
+
+      it('should not reload feature flags when reloadFeatureFlags is false for setPersonProperties', async () => {
+        // Clear any previous calls
+        ;(globalThis as any).window.fetch.mockClear()
+
+        posthog.setPersonProperties({ email: 'test@example.com' }, undefined, false)
+
+        // Wait for any async operations
+        await new Promise((resolve) => setTimeout(resolve, 100))
+
+        // Should have the batch call for $set event, but not a flags call
+        const allCalls = (globalThis as any).window.fetch.mock.calls
+        const flagsCalls = allCalls.filter((call: any) => call[0].includes('/flags/'))
+        expect(flagsCalls.length).toBe(0)
+      })
+
       it('should reload feature flags by default when calling resetGroupPropertiesForFlags', async () => {
         posthog.setGroupPropertiesForFlags({ company: { name: 'Acme Inc' } }, false)
         ;(globalThis as any).window.fetch.mockClear()
@@ -1081,6 +1111,7 @@ describe('Feature flag error tracking', () => {
       fetchRetryCount: 0,
       preloadFeatureFlags: false,
       sendFeatureFlagEvent: true,
+      captureAppLifecycleEvents: false,
     })
   })
 

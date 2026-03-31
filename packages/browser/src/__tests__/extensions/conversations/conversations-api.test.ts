@@ -6,6 +6,8 @@ import {
     GetMessagesResponse,
     MarkAsReadResponse,
     GetTicketsResponse,
+    RestoreFromTokenResponse,
+    RequestRestoreLinkResponse,
     UserProvidedTraits,
 } from '../../../posthog-conversations-types'
 import { PostHog } from '../../../posthog-core'
@@ -41,6 +43,9 @@ describe('Conversations API Methods', () => {
             getMessages: jest.fn(),
             markAsRead: jest.fn(),
             getTickets: jest.fn(),
+            requestRestoreLink: jest.fn(),
+            restoreFromToken: jest.fn(),
+            restoreFromUrlToken: jest.fn(),
             getCurrentTicketId: jest.fn(),
             getWidgetSessionId: jest.fn(),
         } as unknown as ConversationsManager
@@ -138,6 +143,36 @@ describe('Conversations API Methods', () => {
 
             expect(result).toBeNull()
             expect(consoleWarnSpy).not.toHaveBeenCalled() // Safe method, no warning
+        })
+
+        it('should return null from requestRestoreLink when conversations not available', async () => {
+            const result = await conversations.requestRestoreLink('test@example.com')
+
+            expect(result).toBeNull()
+            expect(consoleWarnSpy).toHaveBeenCalledWith(
+                '[PostHog.js] [Conversations]',
+                expect.stringContaining('Conversations not available yet')
+            )
+        })
+
+        it('should return null from restoreFromToken when conversations not available', async () => {
+            const result = await conversations.restoreFromToken('restore-token')
+
+            expect(result).toBeNull()
+            expect(consoleWarnSpy).toHaveBeenCalledWith(
+                '[PostHog.js] [Conversations]',
+                expect.stringContaining('Conversations not available yet')
+            )
+        })
+
+        it('should return null from restoreFromUrlToken when conversations not available', async () => {
+            const result = await conversations.restoreFromUrlToken()
+
+            expect(result).toBeNull()
+            expect(consoleWarnSpy).toHaveBeenCalledWith(
+                '[PostHog.js] [Conversations]',
+                expect.stringContaining('Conversations not available yet')
+            )
         })
     })
 
@@ -297,6 +332,52 @@ describe('Conversations API Methods', () => {
                 expect(result).toEqual(mockResponse)
                 expect(mockManager.getMessages).toHaveBeenCalledWith(undefined, afterTimestamp)
             })
+
+            it('should handle messages with rich_content (TipTap JSON)', async () => {
+                const mockResponse: GetMessagesResponse = {
+                    ticket_id: 'ticket-123',
+                    ticket_status: 'open',
+                    messages: [
+                        {
+                            id: 'msg-1',
+                            content: 'Hello with formatting',
+                            rich_content: {
+                                type: 'doc',
+                                content: [
+                                    {
+                                        type: 'paragraph',
+                                        content: [
+                                            {
+                                                type: 'text',
+                                                text: 'Hello ',
+                                            },
+                                            {
+                                                type: 'text',
+                                                text: 'bold and italic',
+                                                marks: [{ type: 'bold' }, { type: 'italic' }],
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                            author_type: 'human',
+                            author_name: 'Support Agent',
+                            created_at: '2024-01-01T00:00:00Z',
+                            is_private: false,
+                        },
+                    ],
+                    has_more: false,
+                    unread_count: 0,
+                }
+
+                ;(mockManager.getMessages as jest.Mock).mockResolvedValue(mockResponse)
+
+                const result = await conversations.getMessages()
+
+                expect(result).toEqual(mockResponse)
+                expect(result?.messages[0].rich_content).toBeDefined()
+                expect(result?.messages[0].rich_content?.type).toBe('doc')
+            })
         })
 
         describe('markAsRead', () => {
@@ -403,6 +484,44 @@ describe('Conversations API Methods', () => {
                     limit: 20,
                     offset: 0,
                 })
+            })
+        })
+
+        describe('requestRestoreLink', () => {
+            it('should request a restore link through the manager', async () => {
+                const mockResponse: RequestRestoreLinkResponse = { ok: true }
+                ;(mockManager.requestRestoreLink as jest.Mock).mockResolvedValue(mockResponse)
+
+                const result = await conversations.requestRestoreLink('user@example.com')
+
+                expect(result).toEqual({ ok: true })
+                expect(mockManager.requestRestoreLink).toHaveBeenCalledWith('user@example.com')
+            })
+        })
+
+        describe('restore methods', () => {
+            it('should redeem restore token through the manager', async () => {
+                const mockResponse: RestoreFromTokenResponse = {
+                    status: 'success',
+                    widget_session_id: 'restored-session-id',
+                    migrated_ticket_ids: ['ticket-1'],
+                }
+                ;(mockManager.restoreFromToken as jest.Mock).mockResolvedValue(mockResponse)
+
+                const result = await conversations.restoreFromToken('restore-token')
+
+                expect(result).toEqual(mockResponse)
+                expect(mockManager.restoreFromToken).toHaveBeenCalledWith('restore-token')
+            })
+
+            it('should redeem restore token from URL through the manager', async () => {
+                const mockResponse: RestoreFromTokenResponse = { status: 'invalid', code: 'token_invalid' }
+                ;(mockManager.restoreFromUrlToken as jest.Mock).mockResolvedValue(mockResponse)
+
+                const result = await conversations.restoreFromUrlToken()
+
+                expect(result).toEqual(mockResponse)
+                expect(mockManager.restoreFromUrlToken).toHaveBeenCalled()
             })
         })
 

@@ -1,5 +1,127 @@
 # @posthog/core
 
+## 1.24.4
+
+### Patch Changes
+
+- [#3296](https://github.com/PostHog/posthog-js/pull/3296) [`a863914`](https://github.com/PostHog/posthog-js/commit/a863914bca09643f2aef7ca029b96de9cbfbc24c) Thanks [@marandaneto](https://github.com/marandaneto)! - Fix `captureException` crashing in React Native with `ReferenceError: Property 'Event' doesn't exist`
+  (2026-03-30)
+
+## 1.24.3
+
+### Patch Changes
+
+- [#3292](https://github.com/PostHog/posthog-js/pull/3292) [`4bdfdbc`](https://github.com/PostHog/posthog-js/commit/4bdfdbcfe6a5600664a609a6b17c7d7cb72cd20f) Thanks [@marandaneto](https://github.com/marandaneto)! - Add `@default` JSDoc tags to `PostHogCoreOptions` configuration properties for better IDE documentation and discoverability.
+  (2026-03-27)
+
+## 1.24.2
+
+### Patch Changes
+
+- [#3286](https://github.com/PostHog/posthog-js/pull/3286) [`8d34289`](https://github.com/PostHog/posthog-js/commit/8d34289f7cf91945223eed4366b11fb187a63a40) Thanks [@marandaneto](https://github.com/marandaneto)! - Use async native CompressionStream for gzip compression to avoid blocking the main thread
+  (2026-03-27)
+
+## 1.24.1
+
+### Patch Changes
+
+- [#3265](https://github.com/PostHog/posthog-js/pull/3265) [`314120a`](https://github.com/PostHog/posthog-js/commit/314120aa2377b3c8031dd774833fe9082ecdbd39) Thanks [@hpouillot](https://github.com/hpouillot)! - fix sourcemap upload with stdin, clean config
+  (2026-03-20)
+
+## 1.24.0
+
+### Minor Changes
+
+- [#3246](https://github.com/PostHog/posthog-js/pull/3246) [`9cd2313`](https://github.com/PostHog/posthog-js/commit/9cd23138343e1020811f85853d6016cc985bb24f) Thanks [@hpouillot](https://github.com/hpouillot)! - pipe chunk file path to stdin
+  (2026-03-18)
+
+## 1.23.4
+
+### Patch Changes
+
+- [#3236](https://github.com/PostHog/posthog-js/pull/3236) [`bc30c2d`](https://github.com/PostHog/posthog-js/commit/bc30c2d988bb307e811d97711f208c125eefba3a) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - fix: Clean up leaked timers in edge runtimes
+  (2026-03-13)
+
+- [#3236](https://github.com/PostHog/posthog-js/pull/3236) [`bc30c2d`](https://github.com/PostHog/posthog-js/commit/bc30c2d988bb307e811d97711f208c125eefba3a) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - Omit the config query parameter by default to request only the necessary data
+  (2026-03-13)
+
+## 1.23.3
+
+### Patch Changes
+
+- [#3220](https://github.com/PostHog/posthog-js/pull/3220) [`4009c15`](https://github.com/PostHog/posthog-js/commit/4009c15c85c96b5cf99fdbcda448b9893c95541e) Thanks [@ablaszkiewicz](https://github.com/ablaszkiewicz)! - add better handling for CustomEvent inside unhandled rejections
+  (2026-03-11)
+
+## 1.23.2
+
+### Patch Changes
+
+- [#3185](https://github.com/PostHog/posthog-js/pull/3185) [`5e8d5fc`](https://github.com/PostHog/posthog-js/commit/5e8d5fc9c12e5545e015c9c5556167b9fb279347) Thanks [@marandaneto](https://github.com/marandaneto)! - fix: export getRemoteConfigBool, getRemoteConfigNumber, and isValidSampleRate from @posthog/core
+  (2026-03-02)
+
+## 1.23.1
+
+### Patch Changes
+
+- [#3107](https://github.com/PostHog/posthog-js/pull/3107) [`9dbc05e`](https://github.com/PostHog/posthog-js/commit/9dbc05ed65ddc8c37c9262b9aebfc51d0c748971) Thanks [@ablaszkiewicz](https://github.com/ablaszkiewicz)! - warning on manual capture('$exception')
+  (2026-02-18)
+
+## 1.23.0
+
+### Minor Changes
+
+- [#3086](https://github.com/PostHog/posthog-js/pull/3086) [`e962f01`](https://github.com/PostHog/posthog-js/commit/e962f01c80476b9325f0bbb4ca591820cfb9f338) Thanks [@marandaneto](https://github.com/marandaneto)! - feat: support remote config for error tracking, session replay capture performance and capture logs
+  (2026-02-17)
+
+## 1.22.0
+
+### Minor Changes
+
+- [#3045](https://github.com/PostHog/posthog-js/pull/3045) [`0acf16f`](https://github.com/PostHog/posthog-js/commit/0acf16fcbf8c32d5f28b86b6fa200271ad0b647e) Thanks [@dustinbyrne](https://github.com/dustinbyrne)! - feat: Add `getFeatureFlagResult` to PostHogCore
+  (2026-02-10)
+
+## 1.21.0
+
+### Minor Changes
+
+- [#2820](https://github.com/PostHog/posthog-js/pull/2820) [`d578824`](https://github.com/PostHog/posthog-js/commit/d578824395ceba3b854970c2a7723e97466d9e9d) Thanks [@ordehi](https://github.com/ordehi)! - Add survey response validation for message length (min and max length). Fixes whitespace-only bypass for required questions. Existing surveys work unchanged but now properly reject blank responses.
+  (2026-02-09)
+
+## 1.20.2
+
+### Patch Changes
+
+- [#3028](https://github.com/PostHog/posthog-js/pull/3028) [`e055f9a`](https://github.com/PostHog/posthog-js/commit/e055f9a344d7c11309c56444383f79df335a5c51) Thanks [@marandaneto](https://github.com/marandaneto)! - fix: Queue pending feature flags reload instead of dropping requests when a reload is already in flight
+  (2026-02-09)
+
+## 1.20.1
+
+### Patch Changes
+
+- [#3039](https://github.com/PostHog/posthog-js/pull/3039) [`8f75dae`](https://github.com/PostHog/posthog-js/commit/8f75dae39ae2938624ca49e778915a92f2491556) Thanks [@hpouillot](https://github.com/hpouillot)! - fix(err): fix console error capturing
+  (2026-02-06)
+
+## 1.20.0
+
+### Minor Changes
+
+- [#3023](https://github.com/PostHog/posthog-js/pull/3023) [`bb62809`](https://github.com/PostHog/posthog-js/commit/bb62809917845685ae7e2e6d5adad6be5528356e) Thanks [@marandaneto](https://github.com/marandaneto)! - feat: only capture $set events if the user properties have changed
+  (2026-02-04)
+
+## 1.19.0
+
+### Minor Changes
+
+- [#3009](https://github.com/PostHog/posthog-js/pull/3009) [`c99e5fe`](https://github.com/PostHog/posthog-js/commit/c99e5feb043870357c8f722eb52542327c3f472b) Thanks [@marandaneto](https://github.com/marandaneto)! - feat: add setPersonProperties method
+  (2026-02-03)
+
+## 1.18.0
+
+### Minor Changes
+
+- [#2996](https://github.com/PostHog/posthog-js/pull/2996) [`7768010`](https://github.com/PostHog/posthog-js/commit/77680105f1e8baf5ed1934d423494793d11ff01a) Thanks [@matheus-vb](https://github.com/matheus-vb)! - Filter out flags marked as failed before merging with cached values, preventing transient backend errors from overwriting previously evaluated flag states
+  (2026-02-03)
+
 ## 1.17.0
 
 ### Minor Changes

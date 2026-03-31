@@ -13,12 +13,15 @@ import type {
     EarlyAccessFeatureCallback,
     EarlyAccessFeatureStage,
     FeatureFlagResult,
+    FeatureFlagOptions,
+    OverrideFeatureFlagsOptions,
 } from './feature-flags'
 import type { SessionIdChangedCallback } from './session-recording'
 import type { RequestCallback } from './request'
 import type { SurveyRenderReason } from './survey'
 import type { ToolbarParams } from './toolbar'
 import type { ExceptionAutoCaptureConfig } from './posthog-config'
+import type { TreeShakeable } from './tree-shakeable'
 
 /**
  * The PostHog instance interface.
@@ -145,6 +148,29 @@ export interface PostHog {
      */
     createPersonProfile(): void
 
+    /**
+     * Marks the current user as a test user by setting the `$internal_or_test_user` person property to `true`.
+     * This also enables person processing for the current user.
+     *
+     * This is useful for using in a cohort your internal/test filters for your posthog org.
+     * @see https://posthog.com/tutorials/filter-internal-users
+     * Create a cohort with `$internal_or_test_user` IS SET, and set your internal test filters to be NOT IN that cohort.
+     *
+     * {@label Identification}
+     *
+     * @example
+     * ```js
+     * // Manually mark as test user
+     * posthog.setInternalOrTestUser()
+     *
+     * // Or use internal_or_test_user_hostname config for automatic detection
+     * posthog.init('token', { internal_or_test_user_hostname: 'localhost' })
+     * ```
+     *
+     * @public
+     */
+    setInternalOrTestUser(): void
+
     // ============================================================================
     // Groups
     // ============================================================================
@@ -175,13 +201,46 @@ export interface PostHog {
     // ============================================================================
 
     /**
+     * The feature flags instance. Provides access to feature flag override methods.
+     */
+    featureFlags: TreeShakeable<{
+        /**
+         * Override feature flags on the client-side. Useful for testing/debugging.
+         *
+         * @param overrideOptions - The override options
+         *
+         * @example
+         * ```typescript
+         * posthog.featureFlags.overrideFeatureFlags(false) // clear all overrides
+         * posthog.featureFlags.overrideFeatureFlags(['beta-feature']) // enable flags
+         * posthog.featureFlags.overrideFeatureFlags({'beta-feature': 'variant'}) // set variants
+         * posthog.featureFlags.overrideFeatureFlags({
+         *     flags: {'beta-feature': 'variant'},
+         *     payloads: { 'beta-feature': { someData: true } }
+         * })
+         * posthog.featureFlags.overrideFeatureFlags({ // only override payloads
+         *     payloads: { 'beta-feature': { someData: true } }
+         * })
+         * ```
+         */
+        overrideFeatureFlags(overrideOptions: OverrideFeatureFlagsOptions): void
+
+        /**
+         * @deprecated Use `overrideFeatureFlags` instead. This will be removed in a future version.
+         */
+        override(flags: boolean | string[] | Record<string, string | boolean>, suppressWarning?: boolean): void
+    }>
+
+    /**
      * Get the value of a feature flag.
      *
      * @param key - The feature flag key
      * @param options - Options for the feature flag lookup
+     * @param options.send_event - Whether to send a $feature_flag_called event (default: true)
+     * @param options.fresh - If true, only return values loaded from the server, not cached localStorage values (default: false)
      * @returns The feature flag value (boolean for simple flags, string for multivariate)
      */
-    getFeatureFlag(key: string, options?: { send_event?: boolean }): boolean | string | undefined
+    getFeatureFlag(key: string, options?: FeatureFlagOptions): boolean | string | undefined
 
     /**
      * Get the payload of a feature flag.
@@ -199,18 +258,22 @@ export interface PostHog {
      *
      * @param key - The feature flag key
      * @param options - Options for the feature flag lookup
+     * @param options.send_event - Whether to send a $feature_flag_called event (default: true)
+     * @param options.fresh - If true, only return values loaded from the server, not cached localStorage values (default: false)
      * @returns The feature flag result including key, enabled, variant, and payload, or undefined if not loaded
      */
-    getFeatureFlagResult(key: string, options?: { send_event?: boolean }): FeatureFlagResult | undefined
+    getFeatureFlagResult(key: string, options?: FeatureFlagOptions): FeatureFlagResult | undefined
 
     /**
      * Check if a feature flag is enabled.
      *
      * @param key - The feature flag key
      * @param options - Options for the feature flag lookup
+     * @param options.send_event - Whether to send a $feature_flag_called event (default: true)
+     * @param options.fresh - If true, only return values loaded from the server, not cached localStorage values (default: false)
      * @returns Whether the feature flag is enabled
      */
-    isFeatureEnabled(key: string, options?: { send_event?: boolean }): boolean | undefined
+    isFeatureEnabled(key: string, options?: FeatureFlagOptions): boolean | undefined
 
     /**
      * Reload feature flags from the server.
@@ -532,7 +595,7 @@ export interface PostHog {
      * @param cb - The callback to call
      * @returns A function to unsubscribe
      */
-    on(event: 'eventCaptured', cb: (...args: any[]) => void): () => void
+    on(event: 'eventCaptured' | 'featureFlagsReloading', cb: (...args: any[]) => void): () => void
 
     // ============================================================================
     // Error Tracking

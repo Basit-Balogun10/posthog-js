@@ -1,5 +1,138 @@
 # @posthog/webpack-plugin
 
+## 1.3.4
+
+### Patch Changes
+
+- Updated dependencies [[`a863914`](https://github.com/PostHog/posthog-js/commit/a863914bca09643f2aef7ca029b96de9cbfbc24c)]:
+    - @posthog/core@1.24.4
+
+## 1.3.3
+
+### Patch Changes
+
+- Updated dependencies [[`4bdfdbc`](https://github.com/PostHog/posthog-js/commit/4bdfdbcfe6a5600664a609a6b17c7d7cb72cd20f)]:
+    - @posthog/core@1.24.3
+
+## 1.3.2
+
+### Patch Changes
+
+- Updated dependencies [[`8d34289`](https://github.com/PostHog/posthog-js/commit/8d34289f7cf91945223eed4366b11fb187a63a40)]:
+    - @posthog/core@1.24.2
+
+## 1.3.1
+
+### Patch Changes
+
+- [#3265](https://github.com/PostHog/posthog-js/pull/3265) [`314120a`](https://github.com/PostHog/posthog-js/commit/314120aa2377b3c8031dd774833fe9082ecdbd39) Thanks [@hpouillot](https://github.com/hpouillot)! - fix sourcemap upload with stdin, clean config
+  (2026-03-20)
+- Updated dependencies [[`314120a`](https://github.com/PostHog/posthog-js/commit/314120aa2377b3c8031dd774833fe9082ecdbd39)]:
+    - @posthog/core@1.24.1
+
+## 1.3.0
+
+### Minor Changes
+
+- [#3246](https://github.com/PostHog/posthog-js/pull/3246) [`9cd2313`](https://github.com/PostHog/posthog-js/commit/9cd23138343e1020811f85853d6016cc985bb24f) Thanks [@hpouillot](https://github.com/hpouillot)! - pipe chunk file path to stdin
+  (2026-03-18)
+
+### Patch Changes
+
+- Updated dependencies [[`9cd2313`](https://github.com/PostHog/posthog-js/commit/9cd23138343e1020811f85853d6016cc985bb24f)]:
+    - @posthog/core@1.24.0
+
+## 1.2.27
+
+### Patch Changes
+
+- Updated dependencies [[`bc30c2d`](https://github.com/PostHog/posthog-js/commit/bc30c2d988bb307e811d97711f208c125eefba3a), [`bc30c2d`](https://github.com/PostHog/posthog-js/commit/bc30c2d988bb307e811d97711f208c125eefba3a)]:
+    - @posthog/core@1.23.4
+
+## 1.2.26
+
+### Patch Changes
+
+- Updated dependencies [[`4009c15`](https://github.com/PostHog/posthog-js/commit/4009c15c85c96b5cf99fdbcda448b9893c95541e)]:
+    - @posthog/core@1.23.3
+
+## 1.2.25
+
+### Patch Changes
+
+- Updated dependencies [[`5e8d5fc`](https://github.com/PostHog/posthog-js/commit/5e8d5fc9c12e5545e015c9c5556167b9fb279347)]:
+    - @posthog/core@1.23.2
+
+## 1.2.24
+
+### Patch Changes
+
+- Updated dependencies [[`9dbc05e`](https://github.com/PostHog/posthog-js/commit/9dbc05ed65ddc8c37c9262b9aebfc51d0c748971)]:
+    - @posthog/core@1.23.1
+
+## 1.2.23
+
+### Patch Changes
+
+- Updated dependencies [[`e962f01`](https://github.com/PostHog/posthog-js/commit/e962f01c80476b9325f0bbb4ca591820cfb9f338)]:
+    - @posthog/core@1.23.0
+
+## 1.2.22
+
+### Patch Changes
+
+- [#3076](https://github.com/PostHog/posthog-js/pull/3076) [`91234bb`](https://github.com/PostHog/posthog-js/commit/91234bb015ff18b1a95f08448053e7b75730ed81) Thanks [@hpouillot](https://github.com/hpouillot)! - rename sourcemaps config variables with `releaseName`, `releaseVersion`, `projectId`
+  (2026-02-12)
+
+## 1.2.21
+
+### Patch Changes
+
+- Updated dependencies [[`0acf16f`](https://github.com/PostHog/posthog-js/commit/0acf16fcbf8c32d5f28b86b6fa200271ad0b647e)]:
+    - @posthog/core@1.22.0
+
+## 1.2.20
+
+### Patch Changes
+
+- Updated dependencies [[`d578824`](https://github.com/PostHog/posthog-js/commit/d578824395ceba3b854970c2a7723e97466d9e9d)]:
+    - @posthog/core@1.21.0
+
+## 1.2.19
+
+### Patch Changes
+
+- Updated dependencies [[`e055f9a`](https://github.com/PostHog/posthog-js/commit/e055f9a344d7c11309c56444383f79df335a5c51)]:
+    - @posthog/core@1.20.2
+
+## 1.2.18
+
+### Patch Changes
+
+- Updated dependencies [[`8f75dae`](https://github.com/PostHog/posthog-js/commit/8f75dae39ae2938624ca49e778915a92f2491556)]:
+    - @posthog/core@1.20.1
+
+## 1.2.17
+
+### Patch Changes
+
+- Updated dependencies [[`bb62809`](https://github.com/PostHog/posthog-js/commit/bb62809917845685ae7e2e6d5adad6be5528356e)]:
+    - @posthog/core@1.20.0
+
+## 1.2.16
+
+### Patch Changes
+
+- Updated dependencies [[`c99e5fe`](https://github.com/PostHog/posthog-js/commit/c99e5feb043870357c8f722eb52542327c3f472b)]:
+    - @posthog/core@1.19.0
+
+## 1.2.15
+
+### Patch Changes
+
+- Updated dependencies [[`7768010`](https://github.com/PostHog/posthog-js/commit/77680105f1e8baf5ed1934d423494793d11ff01a)]:
+    - @posthog/core@1.18.0
+
 ## 1.2.14
 
 ### Patch Changes

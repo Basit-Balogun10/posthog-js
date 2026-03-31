@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: '19 2 * * 3'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
@@ -46,7 +50,7 @@ jobs:
         # your codebase is analyzed, see https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     # Add any setup steps before running the `github/codeql-action/init` action.
     # This includes steps like installing compilers or runtimes (`actions/setup-node`
